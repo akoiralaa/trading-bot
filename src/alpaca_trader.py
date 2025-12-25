@@ -87,6 +87,17 @@ class AlpacaTrader:
             print(f"Error placing order: {e}")
             return {}
     
+    def get_orders(self) -> list:
+        """Get open orders."""
+        if not self.connected:
+            return []
+        
+        try:
+            return self.api.list_orders(status='open')
+        except Exception as e:
+            print(f"Error getting orders: {e}")
+            return []
+    
     def get_positions(self) -> list:
         """Get current positions."""
         if not self.connected:
@@ -95,7 +106,7 @@ class AlpacaTrader:
         try:
             return self.api.list_positions()
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error getting positions: {e}")
             return []
     
     def save_trade_log(self, filename: str = 'trade_log.json'):
