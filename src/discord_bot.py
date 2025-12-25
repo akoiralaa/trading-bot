@@ -104,8 +104,8 @@ class FractalBot(commands.Cog):
         except Exception as e:
             await ctx.send(f"Error: {str(e)}")
     
-    @commands.command(name='help')
-    async def help_command(self, ctx):
+    @commands.command(name='commands')
+    async def commands_list(self, ctx):
         """Show available commands."""
         embed = discord.Embed(title="🤖 Fractal Trading Bot Commands", color=0x9900FF)
         embed.add_field(name="!status", value="Show bot status", inline=False)
@@ -114,7 +114,7 @@ class FractalBot(commands.Cog):
         embed.add_field(name="!signal [TICKER]", value="Get current trading signal (default: QQQ)", inline=False)
         embed.add_field(name="!stats", value="Show trading performance statistics", inline=False)
         embed.add_field(name="!equity", value="Show equity curve chart", inline=False)
-        embed.add_field(name="!help", value="Show this help message", inline=False)
+        embed.add_field(name="!commands", value="Show this message", inline=False)
         await ctx.send(embed=embed)
     
     def generate_chart(self, ticker: str, timeframe: str) -> io.BytesIO:
