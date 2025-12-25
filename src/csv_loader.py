@@ -1,29 +1,26 @@
 import pandas as pd
-import yfinance as yf
+import pandas_datareader as pdr
+from datetime import datetime
 
 
 class CSVLoader:
-    """Load historical stock data from Yahoo Finance and save to CSV."""
+    """Load historical stock data."""
     
     def __init__(self, ticker: str = "QQQ"):
         self.ticker = ticker
     
     def load_data(self, start_date: str, end_date: str) -> pd.DataFrame:
-        """Load historical OHLCV data from Yahoo Finance."""
-        print(f"Loading {self.ticker} from Yahoo Finance...")
+        """Load historical OHLCV data."""
+        print(f"Loading {self.ticker} from {start_date} to {end_date}...")
         
         try:
-            df = yf.download(
+            df = pdr.get_data_yahoo(
                 self.ticker,
                 start=start_date,
-                end=end_date,
-                progress=False
+                end=end_date
             )
             
-            # Rename columns to lowercase
             df.columns = [col.lower() for col in df.columns]
-            
-            # Ensure we have the right columns
             if 'adj close' in df.columns:
                 df = df.drop('adj close', axis=1)
             
@@ -31,5 +28,5 @@ class CSVLoader:
             return df
             
         except Exception as e:
-            print(f"Error loading data: {e}")
+            print(f"Error: {e}")
             return pd.DataFrame()
