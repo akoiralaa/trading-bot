@@ -13,7 +13,7 @@ class Trade:
         self.stop_loss = stop_loss
         self.target = target
         self.side = side
-        self.confidence = confidence  # 0-1, affects position size
+        self.confidence = confidence
         self.exit_idx = None
         self.exit_price = None
         self.pnl = None
@@ -33,16 +33,17 @@ class Trade:
 
 
 class Backtester:
-    """Backtest with dynamic position sizing."""
+    """Backtest with proper Sharpe Ratio and Drawdown."""
     
-    def __init__(self, risk_per_trade: float = 0.01):
+    def __init__(self, risk_per_trade: float = 0.01, risk_free_rate: float = 0.05):
         self.risk_per_trade = risk_per_trade
+        self.risk_free_rate = risk_free_rate
         self.trades = []
     
     def run_backtest(self, df: pd.DataFrame, vector: np.ndarray, 
                      entry_signals: np.ndarray, stop_losses: np.ndarray, 
                      targets: np.ndarray, vector_strength: np.ndarray = None) -> Dict:
-        """Run backtest with all optimizations."""
+        """Run backtest."""
         close = df['close'].values
         high = df['high'].values
         low = df['low'].values
@@ -52,14 +53,12 @@ class Backtester:
         
         for i in range(len(df)):
             if active_trade:
-                # Check stop loss
                 if low[i] <= active_trade.stop_loss:
                     active_trade.close(i, active_trade.stop_loss)
                     self.trades.append(active_trade)
                     active_trade = None
                     continue
                 
-                # Check target
                 if high[i] >= active_trade.target:
                     active_trade.close(i, active_trade.target)
                     self.trades.append(active_trade)
@@ -68,14 +67,13 @@ class Backtester:
             
             if entry_signals[i] == 1 and not active_trade:
                 entry_price = close[i]
-                stop = stop_losses[i]  # Already 1.5% tighter
+                stop = stop_losses[i]
                 target = targets[i]
                 
-                # Calculate confidence based on vector strength
-                confidence = 0.5  # Default
+                confidence = 0.5
                 if vector_strength is not None and i < len(vector_strength):
                     strength = vector_strength[i]
-                    confidence = min(1.0, abs(strength) / 0.5)  # Scale to 0-1
+                    confidence = min(1.0, abs(strength) / 0.5)
                 
                 if stop > 0 and target > entry_price > stop:
                     active_trade = Trade(
@@ -94,14 +92,28 @@ class Backtester:
         return self.calculate_metrics()
     
     def calculate_metrics(self) -> Dict:
-        """Calculate metrics."""
+        """Calculate all metrics."""
         if len(self.trades) == 0:
             return self._empty_metrics()
         
-        pnls = [t.pnl for t in self.trades if t.pnl is not None]
+        pnls = np.array([t.pnl for t in self.trades if t.pnl is not None])
         winning = [p for p in pnls if p > 0]
         losing = [p for p in pnls if p <= 0]
         
+        # Equity curve and drawdown
+        equity = np.cumsum(pnls)
+        peak = np.maximum.accumulate(equity)
+        drawdown_series = (peak - equity) / np.maximum(peak, 1)
+        max_drawdown = np.max(drawdown_series) * 100 if len(drawdown_series) > 0 else 0
+        
+        # Sharpe (simplified - based on trade returns)
+        if len(pnls) > 1:
+            returns = pnls / 10000  # Assume $10k per trade
+            sharpe = self._calculate_sharpe(returns)
+        else:
+            sharpe = 0
+        
+        # RR Ratio
         rr_ratios = []
         for trade in self.trades:
             if trade.pnl is not None:
@@ -115,15 +127,24 @@ class Backtester:
             'winning_trades': len(winning),
             'losing_trades': len(losing),
             'win_rate': (len(winning) / len(self.trades) * 100) if self.trades else 0,
-            'total_pnl': sum(pnls) if pnls else 0,
-            'avg_pnl_per_trade': np.mean(pnls) if pnls else 0,
-            'best_trade': max(pnls) if pnls else 0,
-            'worst_trade': min(pnls) if pnls else 0,
+            'total_pnl': sum(pnls) if len(pnls) > 0 else 0,
+            'avg_pnl_per_trade': np.mean(pnls) if len(pnls) > 0 else 0,
+            'best_trade': max(pnls) if len(pnls) > 0 else 0,
+            'worst_trade': min(pnls) if len(pnls) > 0 else 0,
             'avg_win': np.mean(winning) if winning else 0,
             'avg_loss': np.mean(losing) if losing else 0,
             'avg_rr_ratio': np.mean(rr_ratios) if rr_ratios else 0,
-            'profit_factor': abs(sum(winning) / sum(losing)) if losing and sum(losing) != 0 else 0
+            'profit_factor': abs(sum(winning) / sum(losing)) if losing and sum(losing) != 0 else 0,
+            'sharpe_ratio': sharpe,
+            'max_drawdown': max_drawdown
         }
+    
+    def _calculate_sharpe(self, returns: np.ndarray) -> float:
+        """Calculate Sharpe Ratio."""
+        if len(returns) < 2 or np.std(returns) == 0:
+            return 0
+        
+        return (np.mean(returns) / np.std(returns)) * np.sqrt(252)
     
     def _empty_metrics(self) -> Dict:
         return {
@@ -138,7 +159,9 @@ class Backtester:
             'avg_win': 0,
             'avg_loss': 0,
             'avg_rr_ratio': 0,
-            'profit_factor': 0
+            'profit_factor': 0,
+            'sharpe_ratio': 0,
+            'max_drawdown': 0
         }
     
     def print_results(self, metrics: Dict):
@@ -159,4 +182,7 @@ class Backtester:
         print(f"Avg Loss: ${metrics['avg_loss']:.2f}")
         print(f"Avg RR Ratio: {metrics['avg_rr_ratio']:.2f}:1")
         print(f"Profit Factor: {metrics['profit_factor']:.2f}x")
+        print(f"\nRisk Metrics")
+        print(f"Sharpe Ratio: {metrics['sharpe_ratio']:.2f}")
+        print(f"Max Drawdown: {metrics['max_drawdown']:.2f}%")
         print("="*60)

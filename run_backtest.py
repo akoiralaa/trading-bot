@@ -46,7 +46,7 @@ if __name__ == "__main__":
         exit(1)
     
     print("\nCalculating Wave 7 vector and strength...")
-    vector_calc = VectorCalculator(lookback_period=20)
+    vector_calc = VectorCalculator(wave_period=7, lookback=20)
     vector = vector_calc.calculate_vector(df)
     vector_strength = vector_calc.get_vector_strength(df, vector)
     
@@ -66,7 +66,6 @@ if __name__ == "__main__":
     print("Calculating cluster-based targets...")
     targets = get_cluster_targets(df['close'].values, resistance)
     
-    # OPTIMIZATION: Tighter stops (1.5% instead of 2%)
     stops = vector * 0.985
     
     print("\nRunning optimized backtest...")
