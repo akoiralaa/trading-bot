@@ -32,7 +32,7 @@ class Trade:
 
 
 class Backtester:
-    """Backtest with correct metrics."""
+    """Backtest with proper Sharpe calculation."""
     
     def __init__(self, risk_per_trade: float = 0.01, initial_capital: float = 100000):
         self.risk_per_trade = risk_per_trade
@@ -91,7 +91,7 @@ class Backtester:
         return self.calculate_metrics()
     
     def calculate_metrics(self) -> Dict:
-        """Calculate metrics on real account equity."""
+        """Calculate metrics with proper Sharpe."""
         if len(self.trades) == 0:
             return self._empty_metrics()
         
@@ -102,15 +102,24 @@ class Backtester:
         # Build equity curve
         equity = np.cumsum(pnls) + self.initial_capital
         
-        # Calculate max drawdown properly
+        # Max drawdown
         running_max = np.maximum.accumulate(equity)
         drawdown = (running_max - equity) / running_max * 100
         max_drawdown = np.max(drawdown) if len(drawdown) > 0 else 0
         
-        # Sharpe ratio based on returns
+        # Sharpe Ratio - properly annualized
         if len(pnls) > 1:
-            returns = pnls / self.initial_capital
-            sharpe = self._calculate_sharpe(returns)
+            # Daily returns
+            daily_returns = pnls / self.initial_capital
+            
+            # Sharpe with 252 trading days
+            mean_return = np.mean(daily_returns)
+            std_return = np.std(daily_returns)
+            
+            if std_return > 0:
+                sharpe = (mean_return / std_return) * np.sqrt(252)
+            else:
+                sharpe = 0
         else:
             sharpe = 0
         
@@ -139,12 +148,6 @@ class Backtester:
             'sharpe_ratio': sharpe,
             'max_drawdown': max_drawdown
         }
-    
-    def _calculate_sharpe(self, returns: np.ndarray) -> float:
-        """Calculate Sharpe Ratio."""
-        if len(returns) < 2 or np.std(returns) == 0:
-            return 0
-        return (np.mean(returns) / np.std(returns)) * np.sqrt(252)
     
     def _empty_metrics(self) -> Dict:
         return {
