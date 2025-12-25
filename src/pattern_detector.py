@@ -10,7 +10,7 @@ class PatternDetector:
     
     def detect_table_top_b(self, df: pd.DataFrame, vector: np.ndarray, 
                           vector_strength: np.ndarray, lookback: int = 5) -> np.ndarray:
-        """Table Top B with strength confirmation."""
+        """Table Top B with STRICT strength confirmation."""
         close = df['close'].values
         low = df['low'].values
         
@@ -21,8 +21,8 @@ class PatternDetector:
             above_now = close[i] > vector[i]
             was_below = close[i-1] <= vector[i-1] * (1 + self.tolerance)
             
-            # ADD: Only enter if vector strength is strong (bullish)
-            strength_strong = vector_strength[i] > 0.4
+            # STRICT: Only very strong bullish signals (>0.6)
+            strength_strong = vector_strength[i] > 0.6
             
             if dipped_below and above_now and was_below and strength_strong:
                 signals[i] = 1
@@ -31,7 +31,7 @@ class PatternDetector:
     
     def detect_table_top_a(self, df: pd.DataFrame, vector: np.ndarray,
                           vector_strength: np.ndarray, lookback: int = 5) -> np.ndarray:
-        """Table Top A with strength confirmation."""
+        """Table Top A with STRICT strength confirmation."""
         close = df['close'].values
         high = df['high'].values
         
@@ -46,8 +46,8 @@ class PatternDetector:
             else:
                 was_at_vector = False
             
-            # ADD: Only enter if vector strength is strong
-            strength_strong = vector_strength[i] > 0.4
+            # STRICT: Only very strong bullish signals (>0.6)
+            strength_strong = vector_strength[i] > 0.6
             
             if tapped_vector and above_now and was_at_vector and strength_strong:
                 signals[i] = 1
