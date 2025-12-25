@@ -3,14 +3,14 @@ import pandas as pd
 
 
 class PatternDetector:
-    """Detect entry patterns with strength confirmation."""
+    """Detect entry patterns with multi-timeframe confirmation."""
     
     def __init__(self, tolerance: float = 0.002):
         self.tolerance = tolerance
     
     def detect_table_top_b(self, df: pd.DataFrame, vector: np.ndarray, 
                           vector_strength: np.ndarray, lookback: int = 5) -> np.ndarray:
-        """Table Top B with strength confirmation."""
+        """Table Top B: Price dips below vector, reverses back above."""
         close = df['close'].values
         low = df['low'].values
         
@@ -20,8 +20,6 @@ class PatternDetector:
             dipped_below = np.any(low[i-lookback:i] < vector[i-lookback:i])
             above_now = close[i] > vector[i]
             was_below = close[i-1] <= vector[i-1] * (1 + self.tolerance)
-            
-            # BALANCED: 0.5 strength threshold
             strength_strong = vector_strength[i] > 0.5
             
             if dipped_below and above_now and was_below and strength_strong:
@@ -31,7 +29,7 @@ class PatternDetector:
     
     def detect_table_top_a(self, df: pd.DataFrame, vector: np.ndarray,
                           vector_strength: np.ndarray, lookback: int = 5) -> np.ndarray:
-        """Table Top A with strength confirmation."""
+        """Table Top A: Price taps vector, bounces back up."""
         close = df['close'].values
         high = df['high'].values
         
@@ -46,7 +44,6 @@ class PatternDetector:
             else:
                 was_at_vector = False
             
-            # BALANCED: 0.5 strength threshold
             strength_strong = vector_strength[i] > 0.5
             
             if tapped_vector and above_now and was_at_vector and strength_strong:
