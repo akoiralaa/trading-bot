@@ -5,6 +5,7 @@ import pandas as pd
 from src.vector_calculator import VectorCalculator
 from src.fractal_detector import FractalDetector
 from src.pattern_detector import PatternDetector
+from src.performance_dashboard import PerformanceDashboard
 import matplotlib.pyplot as plt
 import io
 
@@ -17,49 +18,34 @@ class FractalBot(commands.Cog):
         self.vector_calc = VectorCalculator(lookback_period=20)
         self.fractal_detector = FractalDetector(cluster_threshold=0.10)
         self.pattern_detector = PatternDetector()
+        self.dashboard = PerformanceDashboard()
     
     @commands.command(name='fractal')
     async def fractal(self, ctx, ticker: str = "QQQ", timeframe: str = "daily"):
-        """
-        Analyze fractal zones for a ticker.
-        Usage: !fractal QQQ daily
-        """
+        """Analyze fractal zones for a ticker."""
         try:
             await ctx.send(f"Analyzing {ticker} {timeframe} fractals...")
-            
-            # Generate test chart
             chart = self.generate_chart(ticker, timeframe)
-            
-            # Send chart
             file = discord.File(chart, filename=f"{ticker}_{timeframe}.png")
             await ctx.send(file=file)
-            
         except Exception as e:
             await ctx.send(f"Error: {str(e)}")
     
     @commands.command(name='zone')
     async def zone(self, ctx, ticker: str = "QQQ"):
-        """
-        Get support and resistance zones.
-        Usage: !zone QQQ
-        """
+        """Get support and resistance zones."""
         try:
-            await ctx.send(f"Finding zones for {ticker}...")
             embed = discord.Embed(title=f"{ticker} Trading Zones", color=0x00ff00)
             embed.add_field(name="Resistance", value="$600-610", inline=False)
             embed.add_field(name="Support", value="$580-590", inline=False)
             embed.add_field(name="Vector Level", value="$595.50", inline=False)
             await ctx.send(embed=embed)
-            
         except Exception as e:
             await ctx.send(f"Error: {str(e)}")
     
     @commands.command(name='signal')
     async def signal(self, ctx, ticker: str = "QQQ"):
-        """
-        Get current trading signal.
-        Usage: !signal QQQ
-        """
+        """Get current trading signal."""
         try:
             embed = discord.Embed(title=f"{ticker} Signal", color=0x0000ff)
             embed.add_field(name="Status", value="🟢 BULLISH", inline=False)
@@ -68,7 +54,35 @@ class FractalBot(commands.Cog):
             embed.add_field(name="Target", value="$610.00", inline=False)
             embed.add_field(name="R:R", value="2:1", inline=False)
             await ctx.send(embed=embed)
-            
+        except Exception as e:
+            await ctx.send(f"Error: {str(e)}")
+    
+    @commands.command(name='stats')
+    async def stats(self, ctx):
+        """Show trading performance statistics."""
+        try:
+            metrics = self.dashboard.get_metrics()
+            embed = discord.Embed(title="Trading Statistics", color=0xFF00FF)
+            embed.add_field(name="Total Trades", value=f"{metrics['total_trades']}", inline=True)
+            embed.add_field(name="Win Rate", value=f"{metrics['win_rate']:.2f}%", inline=True)
+            embed.add_field(name="Total P&L", value=f"${metrics['total_pnl']:.2f}", inline=True)
+            embed.add_field(name="Avg Trade", value=f"${metrics['avg_trade']:.2f}", inline=True)
+            embed.add_field(name="Best Trade", value=f"${metrics['best_trade']:.2f}", inline=True)
+            embed.add_field(name="Worst Trade", value=f"${metrics['worst_trade']:.2f}", inline=True)
+            await ctx.send(embed=embed)
+        except Exception as e:
+            await ctx.send(f"Error: {str(e)}")
+    
+    @commands.command(name='equity')
+    async def equity(self, ctx):
+        """Show equity curve chart."""
+        try:
+            chart = self.dashboard.plot_equity_curve()
+            if chart:
+                file = discord.File(chart, filename="equity_curve.png")
+                await ctx.send(file=file)
+            else:
+                await ctx.send("No trades to display")
         except Exception as e:
             await ctx.send(f"Error: {str(e)}")
     
@@ -76,15 +90,13 @@ class FractalBot(commands.Cog):
         """Generate a chart of fractal zones."""
         fig, ax = plt.subplots(figsize=(12, 6))
         
-        # Generate synthetic price data
         np.random.seed(42)
         bars = 100
         prices = [420.0]
         for _ in range(bars - 1):
-            change = np.random.normal(0.0005, 0.008)
+            change = np.random.normal(0, 0.01)
             prices.append(prices[-1] * (1 + change))
         
-        # Plot
         ax.plot(range(len(prices)), prices, 'b-', linewidth=2, label='Price')
         ax.axhline(y=np.mean(prices), color='r', linestyle='--', label='Vector')
         ax.fill_between(range(len(prices)), np.min(prices)*0.98, np.max(prices)*1.02, alpha=0.2, color='green', label='Support Zone')
@@ -95,7 +107,6 @@ class FractalBot(commands.Cog):
         ax.legend()
         ax.grid(True, alpha=0.3)
         
-        # Save to bytes
         buf = io.BytesIO()
         plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
         buf.seek(0)
