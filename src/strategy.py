@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from typing import Dict
 from src.data_loader import DataLoader
 from src.vector_calculator import VectorCalculator
 from src.fractal_detector import FractalDetector
