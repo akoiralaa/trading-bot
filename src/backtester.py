@@ -4,8 +4,6 @@ from typing import Dict
 
 
 class Trade:
-    """Represents a single trade."""
-    
     def __init__(self, entry_idx: int, entry_price: float, stop_loss: float, target: float, 
                  side: str, quantity: int = 1, confidence: float = 1.0):
         self.entry_idx = entry_idx
@@ -27,15 +25,10 @@ class Trade:
         if self.side == 'long':
             self.pnl = (exit_price - self.entry_price) * self.quantity
             self.pnl_pct = ((exit_price - self.entry_price) / self.entry_price) * 100
-        else:
-            self.pnl = (self.entry_price - exit_price) * self.quantity
-            self.pnl_pct = ((self.entry_price - exit_price) / self.entry_price) * 100
 
 
 class Backtester:
-    """Backtest with position sizing."""
-    
-    def __init__(self, risk_per_trade: float = 0.01, initial_capital: float = 100000):
+    def __init__(self, risk_per_trade: float = 0.03, initial_capital: float = 100000):
         self.risk_per_trade = risk_per_trade
         self.initial_capital = initial_capital
         self.trades = []
@@ -43,7 +36,6 @@ class Backtester:
     def run_backtest(self, df: pd.DataFrame, vector: np.ndarray, 
                      entry_signals: np.ndarray, stop_losses: np.ndarray, 
                      targets: np.ndarray, vector_strength: np.ndarray = None) -> Dict:
-        """Run backtest with position sizing."""
         close = df['close'].values
         high = df['high'].values
         low = df['low'].values
@@ -76,7 +68,6 @@ class Backtester:
                     confidence = min(1.0, abs(strength) / 0.5)
                 
                 if stop > 0 and target > entry_price > stop:
-                    # Calculate position size: risk 1% per trade
                     risk_amount = self.initial_capital * self.risk_per_trade
                     risk_per_share = entry_price - stop
                     quantity = int(risk_amount / risk_per_share)
@@ -99,7 +90,6 @@ class Backtester:
         return self.calculate_metrics()
     
     def calculate_metrics(self) -> Dict:
-        """Calculate metrics."""
         if len(self.trades) == 0:
             return self._empty_metrics()
         
@@ -107,15 +97,12 @@ class Backtester:
         winning = [p for p in pnls if p > 0]
         losing = [p for p in pnls if p <= 0]
         
-        # Build equity curve
         equity = np.cumsum(pnls) + self.initial_capital
         
-        # Max drawdown
         running_max = np.maximum.accumulate(equity)
         drawdown = (running_max - equity) / running_max * 100
         max_drawdown = np.max(drawdown) if len(drawdown) > 0 else 0
         
-        # Sharpe Ratio
         if len(pnls) > 1:
             daily_returns = pnls / self.initial_capital
             mean_return = np.mean(daily_returns)
@@ -128,7 +115,6 @@ class Backtester:
         else:
             sharpe = 0
         
-        # RR Ratio
         rr_ratios = []
         for trade in self.trades:
             if trade.pnl is not None:
@@ -161,25 +147,3 @@ class Backtester:
             'avg_win': 0, 'avg_loss': 0, 'avg_rr_ratio': 0, 'profit_factor': 0,
             'sharpe_ratio': 0, 'max_drawdown': 0
         }
-    
-    def print_results(self, metrics: Dict):
-        print("\n" + "="*60)
-        print("BACKTEST RESULTS")
-        print("="*60)
-        print(f"Total Trades: {metrics['total_trades']}")
-        print(f"Winning: {metrics['winning_trades']} | Losing: {metrics['losing_trades']}")
-        print(f"Win Rate: {metrics['win_rate']:.2f}%")
-        print(f"\nProfitability")
-        print(f"Total P&L: ${metrics['total_pnl']:.2f}")
-        print(f"Avg P&L per Trade: ${metrics['avg_pnl_per_trade']:.2f}")
-        print(f"Best Trade: ${metrics['best_trade']:.2f}")
-        print(f"Worst Trade: ${metrics['worst_trade']:.2f}")
-        print(f"\nRisk/Reward")
-        print(f"Avg Win: ${metrics['avg_win']:.2f}")
-        print(f"Avg Loss: ${metrics['avg_loss']:.2f}")
-        print(f"Avg RR Ratio: {metrics['avg_rr_ratio']:.2f}:1")
-        print(f"Profit Factor: {metrics['profit_factor']:.2f}x")
-        print(f"\nRisk Metrics")
-        print(f"Sharpe Ratio: {metrics['sharpe_ratio']:.2f}")
-        print(f"Max Drawdown: {metrics['max_drawdown']:.2f}%")
-        print("="*60)
