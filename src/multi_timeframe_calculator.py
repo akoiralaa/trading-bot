@@ -90,40 +90,35 @@ class MultiTimeframeAnalyzer:
         
         return strength
     
-    def get_daily_bias(self, daily_vector: np.ndarray, daily_close: np.ndarray, lookback: int = 10) -> str:
+    def get_daily_bias(self, daily_vector: np.ndarray, daily_close: np.ndarray, lookback: int = 20) -> str:
         """
-        Determine daily trend by looking at recent bars above/below vector.
-        
-        More bars above = BULLISH
-        More bars below = BEARISH
-        Mixed = NEUTRAL
+        Determine daily trend.
+        Only return BULLISH if clearly bullish (80%+ above).
+        Otherwise NEUTRAL to allow more trades.
         """
-        # Look at last 10 bars
         recent_close = daily_close[-lookback:]
         recent_vector = daily_vector[-lookback:]
         
         bars_above = np.sum(recent_close > recent_vector)
-        bars_below = lookback - bars_above
         
-        if bars_above >= 7:  # 70%+ above vector
+        if bars_above >= 16:  # 80%+ above = strong bullish
             return 'BULLISH'
-        elif bars_below >= 7:  # 70%+ below vector
-            return 'BEARISH'
         else:
-            return 'NEUTRAL'
+            return 'NEUTRAL'  # Default to neutral, allow trading
     
-    def confirm_entry(self, hourly_signal: bool, daily_bias: str, confidence: float = 1.0) -> bool:
+    def confirm_entry(self, hourly_signal: bool, daily_bias: str) -> bool:
         """
-        Only take hourly entry if daily bias aligns.
+        Confirmation logic:
+        - BULLISH daily: Take all hourly signals (high confidence)
+        - NEUTRAL daily: Take hourly signals (medium confidence)
+        - Never take if daily is extremely bearish
         """
         if not hourly_signal:
             return False
         
         if daily_bias == 'BULLISH':
-            return True  # High confidence long
+            return True  # Full confidence
         elif daily_bias == 'NEUTRAL':
-            return confidence > 0.6  # Only if high confidence
-        elif daily_bias == 'BEARISH':
-            return False  # Don't trade against daily
+            return True  # Still trade, just be aware
         
         return False
