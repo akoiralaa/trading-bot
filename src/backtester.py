@@ -7,12 +7,13 @@ class Trade:
     """Represents a single trade."""
     
     def __init__(self, entry_idx: int, entry_price: float, stop_loss: float, target: float, 
-                 side: str, confidence: float = 1.0):
+                 side: str, quantity: int = 1, confidence: float = 1.0):
         self.entry_idx = entry_idx
         self.entry_price = entry_price
         self.stop_loss = stop_loss
         self.target = target
         self.side = side
+        self.quantity = quantity
         self.confidence = confidence
         self.exit_idx = None
         self.exit_price = None
@@ -24,15 +25,15 @@ class Trade:
         self.exit_price = exit_price
         
         if self.side == 'long':
-            self.pnl = exit_price - self.entry_price
-            self.pnl_pct = (self.pnl / self.entry_price) * 100
+            self.pnl = (exit_price - self.entry_price) * self.quantity
+            self.pnl_pct = ((exit_price - self.entry_price) / self.entry_price) * 100
         else:
-            self.pnl = self.entry_price - exit_price
-            self.pnl_pct = (self.pnl / self.entry_price) * 100
+            self.pnl = (self.entry_price - exit_price) * self.quantity
+            self.pnl_pct = ((self.entry_price - exit_price) / self.entry_price) * 100
 
 
 class Backtester:
-    """Backtest with proper Sharpe calculation."""
+    """Backtest with position sizing."""
     
     def __init__(self, risk_per_trade: float = 0.01, initial_capital: float = 100000):
         self.risk_per_trade = risk_per_trade
@@ -42,7 +43,7 @@ class Backtester:
     def run_backtest(self, df: pd.DataFrame, vector: np.ndarray, 
                      entry_signals: np.ndarray, stop_losses: np.ndarray, 
                      targets: np.ndarray, vector_strength: np.ndarray = None) -> Dict:
-        """Run backtest."""
+        """Run backtest with position sizing."""
         close = df['close'].values
         high = df['high'].values
         low = df['low'].values
@@ -75,14 +76,21 @@ class Backtester:
                     confidence = min(1.0, abs(strength) / 0.5)
                 
                 if stop > 0 and target > entry_price > stop:
-                    active_trade = Trade(
-                        entry_idx=i,
-                        entry_price=entry_price,
-                        stop_loss=stop,
-                        target=target,
-                        side='long',
-                        confidence=confidence
-                    )
+                    # Calculate position size: risk 1% per trade
+                    risk_amount = self.initial_capital * self.risk_per_trade
+                    risk_per_share = entry_price - stop
+                    quantity = int(risk_amount / risk_per_share)
+                    
+                    if quantity > 0:
+                        active_trade = Trade(
+                            entry_idx=i,
+                            entry_price=entry_price,
+                            stop_loss=stop,
+                            target=target,
+                            side='long',
+                            quantity=quantity,
+                            confidence=confidence
+                        )
         
         if active_trade:
             active_trade.close(len(df) - 1, close[-1])
@@ -91,7 +99,7 @@ class Backtester:
         return self.calculate_metrics()
     
     def calculate_metrics(self) -> Dict:
-        """Calculate metrics with proper Sharpe."""
+        """Calculate metrics."""
         if len(self.trades) == 0:
             return self._empty_metrics()
         
@@ -107,12 +115,9 @@ class Backtester:
         drawdown = (running_max - equity) / running_max * 100
         max_drawdown = np.max(drawdown) if len(drawdown) > 0 else 0
         
-        # Sharpe Ratio - properly annualized
+        # Sharpe Ratio
         if len(pnls) > 1:
-            # Daily returns
             daily_returns = pnls / self.initial_capital
-            
-            # Sharpe with 252 trading days
             mean_return = np.mean(daily_returns)
             std_return = np.std(daily_returns)
             
@@ -158,7 +163,6 @@ class Backtester:
         }
     
     def print_results(self, metrics: Dict):
-        """Print results."""
         print("\n" + "="*60)
         print("BACKTEST RESULTS")
         print("="*60)

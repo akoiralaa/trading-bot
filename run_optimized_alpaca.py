@@ -17,7 +17,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-# REAL DATA OPTIMIZED PARAMETERS
 OPTIMIZED_PARAMS = {
     'PLTR': {'lookback': 10, 'threshold': 0.20},
     'PENN': {'lookback': 35, 'threshold': 0.15},
@@ -27,7 +26,6 @@ OPTIMIZED_PARAMS = {
 
 
 def get_alpaca_data(trader, ticker: str, days: int = 365) -> pd.DataFrame:
-    """Get historical data from Alpaca."""
     try:
         end = datetime.now()
         start = end - timedelta(days=days)
@@ -75,7 +73,6 @@ def get_cluster_targets(close, resistance_clusters):
 
 
 def backtest_ticker(trader, ticker: str) -> dict:
-    """Backtest with optimized real data parameters."""
     df = get_alpaca_data(trader, ticker, days=365)
     
     if df.empty:
@@ -171,16 +168,20 @@ def main():
             m = result['metrics']
             p = result['params']
             print(f"  Params: lookback={p['lookback']}, threshold={p['threshold']:.2f}")
-            print(f"  Results: {m['total_trades']} trades | PF: {m['profit_factor']:.2f}x | Win: {m['win_rate']:.1f}%")
-            print(f"  Chart: {result['chart_file']}")
+            print(f"  Trades: {m['total_trades']} | Win: {m['win_rate']:.1f}%")
+            print(f"  Profit Factor: {m['profit_factor']:.2f}x")
+            print(f"  Sharpe: {m['sharpe_ratio']:.2f}")
+            print(f"  Max DD: {m['max_drawdown']:.2f}%")
     
     print(f"\n{'='*70}")
     print("SUMMARY - REAL DATA OPTIMIZED")
     print(f"{'='*70}\n")
+    print(f"{'Ticker':<8} {'PF':<8} {'Trades':<8} {'Win%':<8} {'Sharpe':<8} {'MaxDD%':<8}")
+    print("-" * 60)
     
     for ticker, result in sorted(results.items(), key=lambda x: x[1]['metrics']['profit_factor'], reverse=True):
         m = result['metrics']
-        print(f"{ticker}: {m['profit_factor']:.2f}x PF | {m['total_trades']} trades | {m['win_rate']:.1f}% win")
+        print(f"{ticker:<8} {m['profit_factor']:<8.2f}x {m['total_trades']:<8} {m['win_rate']:<8.1f}% {m['sharpe_ratio']:<8.2f} {m['max_drawdown']:<8.2f}%")
 
 
 if __name__ == "__main__":
