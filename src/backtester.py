@@ -20,7 +20,6 @@ class Trade:
         self.pnl_pct = None
     
     def close(self, exit_idx: int, exit_price: float):
-        """Close the trade at exit price."""
         self.exit_idx = exit_idx
         self.exit_price = exit_price
         
@@ -33,11 +32,11 @@ class Trade:
 
 
 class Backtester:
-    """Backtest with proper Sharpe Ratio and Drawdown."""
+    """Backtest with correct metrics."""
     
-    def __init__(self, risk_per_trade: float = 0.01, risk_free_rate: float = 0.05):
+    def __init__(self, risk_per_trade: float = 0.01, initial_capital: float = 100000):
         self.risk_per_trade = risk_per_trade
-        self.risk_free_rate = risk_free_rate
+        self.initial_capital = initial_capital
         self.trades = []
     
     def run_backtest(self, df: pd.DataFrame, vector: np.ndarray, 
@@ -92,7 +91,7 @@ class Backtester:
         return self.calculate_metrics()
     
     def calculate_metrics(self) -> Dict:
-        """Calculate all metrics."""
+        """Calculate metrics on real account equity."""
         if len(self.trades) == 0:
             return self._empty_metrics()
         
@@ -100,15 +99,17 @@ class Backtester:
         winning = [p for p in pnls if p > 0]
         losing = [p for p in pnls if p <= 0]
         
-        # Equity curve and drawdown
-        equity = np.cumsum(pnls)
-        peak = np.maximum.accumulate(equity)
-        drawdown_series = (peak - equity) / np.maximum(peak, 1)
-        max_drawdown = np.max(drawdown_series) * 100 if len(drawdown_series) > 0 else 0
+        # Build equity curve
+        equity = np.cumsum(pnls) + self.initial_capital
         
-        # Sharpe (simplified - based on trade returns)
+        # Calculate max drawdown properly
+        running_max = np.maximum.accumulate(equity)
+        drawdown = (running_max - equity) / running_max * 100
+        max_drawdown = np.max(drawdown) if len(drawdown) > 0 else 0
+        
+        # Sharpe ratio based on returns
         if len(pnls) > 1:
-            returns = pnls / 10000  # Assume $10k per trade
+            returns = pnls / self.initial_capital
             sharpe = self._calculate_sharpe(returns)
         else:
             sharpe = 0
@@ -143,25 +144,14 @@ class Backtester:
         """Calculate Sharpe Ratio."""
         if len(returns) < 2 or np.std(returns) == 0:
             return 0
-        
         return (np.mean(returns) / np.std(returns)) * np.sqrt(252)
     
     def _empty_metrics(self) -> Dict:
         return {
-            'total_trades': 0,
-            'winning_trades': 0,
-            'losing_trades': 0,
-            'win_rate': 0,
-            'total_pnl': 0,
-            'avg_pnl_per_trade': 0,
-            'best_trade': 0,
-            'worst_trade': 0,
-            'avg_win': 0,
-            'avg_loss': 0,
-            'avg_rr_ratio': 0,
-            'profit_factor': 0,
-            'sharpe_ratio': 0,
-            'max_drawdown': 0
+            'total_trades': 0, 'winning_trades': 0, 'losing_trades': 0, 'win_rate': 0,
+            'total_pnl': 0, 'avg_pnl_per_trade': 0, 'best_trade': 0, 'worst_trade': 0,
+            'avg_win': 0, 'avg_loss': 0, 'avg_rr_ratio': 0, 'profit_factor': 0,
+            'sharpe_ratio': 0, 'max_drawdown': 0
         }
     
     def print_results(self, metrics: Dict):
