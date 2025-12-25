@@ -69,8 +69,11 @@ class PatternDetector:
             # Check if currently above vector
             above_now = close[i] > vector[i]
             
-            # Check if previous bar was near/at vector
-            was_at_vector = abs(close[i-1] - vector[i-1]) / vector[i-1] <= self.tolerance
+            # Check if previous bar was near/at vector (avoid divide by zero)
+            if vector[i-1] > 0:
+                was_at_vector = abs(close[i-1] - vector[i-1]) / vector[i-1] <= self.tolerance
+            else:
+                was_at_vector = False
             
             if tapped_vector and above_now and was_at_vector:
                 signals[i] = 1
@@ -96,7 +99,7 @@ class PatternDetector:
             # Count how many times price touched vector but failed
             touches = 0
             for j in range(i - lookback, i):
-                if abs(close[j] - vector[j]) / vector[j] <= self.tolerance:
+                if vector[j] > 0 and abs(close[j] - vector[j]) / vector[j] <= self.tolerance:
                     touches += 1
             
             # Exhaustion = multiple touches with no clean break
