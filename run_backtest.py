@@ -11,27 +11,18 @@ from src.backtester import Backtester
 import numpy as np
 
 
-def get_cluster_targets(close: np.ndarray, resistance_clusters: list, support_clusters: list) -> np.ndarray:
-    """
-    Calculate targets based on actual fractal clusters, not fixed percentages.
-    
-    For each bar, find the next resistance cluster above current price.
-    That becomes the target.
-    """
+def get_cluster_targets(close: np.ndarray, resistance_clusters: list) -> np.ndarray:
+    """Calculate cluster-based targets."""
     targets = np.zeros(len(close))
     
     for i in range(len(close)):
         current_price = close[i]
-        
-        # Find all resistance clusters above current price
         higher_clusters = [r for r in resistance_clusters if r[0] > current_price]
         
         if higher_clusters:
-            # Use nearest cluster as target
             nearest = min(higher_clusters, key=lambda x: x[0] - current_price)
-            targets[i] = nearest[0]  # Use low of cluster as target
+            targets[i] = nearest[0]
         else:
-            # No cluster above, use 3% above current price as fallback
             targets[i] = current_price * 1.03
     
     return targets
@@ -39,7 +30,7 @@ def get_cluster_targets(close: np.ndarray, resistance_clusters: list, support_cl
 
 if __name__ == "__main__":
     print("\n" + "="*60)
-    print("QUANTUM FRACTALS - CLUSTER-BASED BACKTEST")
+    print("QUANTUM FRACTALS - OPTIMIZED BACKTEST")
     print("="*60)
     
     scraper = YahooFinanceScraper(ticker="QQQ")
@@ -54,9 +45,10 @@ if __name__ == "__main__":
         print("Failed to load data.")
         exit(1)
     
-    print("\nCalculating Wave 7 vector...")
+    print("\nCalculating Wave 7 vector and strength...")
     vector_calc = VectorCalculator(lookback_period=20)
     vector = vector_calc.calculate_vector(df)
+    vector_strength = vector_calc.get_vector_strength(df, vector)
     
     print("Detecting fractals and clusters...")
     fractal_detector = FractalDetector(cluster_threshold=0.10)
@@ -64,25 +56,24 @@ if __name__ == "__main__":
     resistance, support = fractal_detector.get_resistance_and_support(fractal_highs, fractal_lows)
     print(f"Found {len(resistance)} resistance clusters, {len(support)} support clusters")
     
-    print("Detecting entry patterns...")
+    print("Detecting entry patterns with strength filtering...")
     pattern_detector = PatternDetector()
-    table_top_b = pattern_detector.detect_table_top_b(df, vector)
-    table_top_a = pattern_detector.detect_table_top_a(df, vector)
+    table_top_b = pattern_detector.detect_table_top_b(df, vector, vector_strength)
+    table_top_a = pattern_detector.detect_table_top_a(df, vector, vector_strength)
     entry_signals = np.logical_or(table_top_b, table_top_a).astype(int)
-    print(f"Found {int(entry_signals.sum())} entry signals")
+    print(f"Found {int(entry_signals.sum())} high-confidence entry signals")
     
-    # Use cluster-based targets instead of fixed %
     print("Calculating cluster-based targets...")
-    targets = get_cluster_targets(df['close'].values, resistance, support)
+    targets = get_cluster_targets(df['close'].values, resistance)
     
-    # Stops still at vector - 2%
-    stops = vector * 0.98
+    # OPTIMIZATION: Tighter stops (1.5% instead of 2%)
+    stops = vector * 0.985
     
-    print("\nRunning backtest with real cluster targets...")
+    print("\nRunning optimized backtest...")
     backtester = Backtester()
-    metrics = backtester.run_backtest(df, vector, entry_signals, stops, targets)
+    metrics = backtester.run_backtest(df, vector, entry_signals, stops, targets, vector_strength)
     backtester.print_results(metrics)
     
     print("\n" + "="*60)
-    print("Quantum Fractals - Cluster-Based Execution")
+    print("Quantum Fractals - Fully Optimized")
     print("="*60)

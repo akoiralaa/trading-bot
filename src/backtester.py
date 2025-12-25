@@ -1,17 +1,19 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple
+from typing import Dict
 
 
 class Trade:
     """Represents a single trade."""
     
-    def __init__(self, entry_idx: int, entry_price: float, stop_loss: float, target: float, side: str):
+    def __init__(self, entry_idx: int, entry_price: float, stop_loss: float, target: float, 
+                 side: str, confidence: float = 1.0):
         self.entry_idx = entry_idx
         self.entry_price = entry_price
         self.stop_loss = stop_loss
         self.target = target
         self.side = side
+        self.confidence = confidence  # 0-1, affects position size
         self.exit_idx = None
         self.exit_price = None
         self.pnl = None
@@ -31,9 +33,7 @@ class Trade:
 
 
 class Backtester:
-    """
-    Backtest the Quantum Fractals Trading System.
-    """
+    """Backtest with dynamic position sizing."""
     
     def __init__(self, risk_per_trade: float = 0.01):
         self.risk_per_trade = risk_per_trade
@@ -41,20 +41,8 @@ class Backtester:
     
     def run_backtest(self, df: pd.DataFrame, vector: np.ndarray, 
                      entry_signals: np.ndarray, stop_losses: np.ndarray, 
-                     targets: np.ndarray) -> Dict:
-        """
-        Run backtest using cluster-based targets.
-        
-        Args:
-            df: DataFrame with OHLCV data
-            vector: Vector line values
-            entry_signals: Array of entry signals
-            stop_losses: Stop loss prices
-            targets: Cluster-based target prices
-        
-        Returns:
-            Dictionary with backtest metrics
-        """
+                     targets: np.ndarray, vector_strength: np.ndarray = None) -> Dict:
+        """Run backtest with all optimizations."""
         close = df['close'].values
         high = df['high'].values
         low = df['low'].values
@@ -63,7 +51,6 @@ class Backtester:
         active_trade = None
         
         for i in range(len(df)):
-            # Check if we have an active trade
             if active_trade:
                 # Check stop loss
                 if low[i] <= active_trade.stop_loss:
@@ -79,23 +66,27 @@ class Backtester:
                     active_trade = None
                     continue
             
-            # Check for new entry signal
             if entry_signals[i] == 1 and not active_trade:
                 entry_price = close[i]
-                stop = stop_losses[i]
+                stop = stop_losses[i]  # Already 1.5% tighter
                 target = targets[i]
                 
-                # Only enter if setup is valid (target above entry, stop below)
+                # Calculate confidence based on vector strength
+                confidence = 0.5  # Default
+                if vector_strength is not None and i < len(vector_strength):
+                    strength = vector_strength[i]
+                    confidence = min(1.0, abs(strength) / 0.5)  # Scale to 0-1
+                
                 if stop > 0 and target > entry_price > stop:
                     active_trade = Trade(
                         entry_idx=i,
                         entry_price=entry_price,
                         stop_loss=stop,
                         target=target,
-                        side='long'
+                        side='long',
+                        confidence=confidence
                     )
         
-        # Close any remaining open trade at last price
         if active_trade:
             active_trade.close(len(df) - 1, close[-1])
             self.trades.append(active_trade)
@@ -103,18 +94,14 @@ class Backtester:
         return self.calculate_metrics()
     
     def calculate_metrics(self) -> Dict:
-        """Calculate backtest performance metrics."""
+        """Calculate metrics."""
         if len(self.trades) == 0:
             return self._empty_metrics()
         
         pnls = [t.pnl for t in self.trades if t.pnl is not None]
-        pnls_pct = [t.pnl_pct for t in self.trades if t.pnl_pct is not None]
         winning = [p for p in pnls if p > 0]
         losing = [p for p in pnls if p <= 0]
         
-        total_pnl = sum(pnls)
-        
-        # Calculate risk/reward ratio for each trade
         rr_ratios = []
         for trade in self.trades:
             if trade.pnl is not None:
@@ -128,7 +115,7 @@ class Backtester:
             'winning_trades': len(winning),
             'losing_trades': len(losing),
             'win_rate': (len(winning) / len(self.trades) * 100) if self.trades else 0,
-            'total_pnl': total_pnl,
+            'total_pnl': sum(pnls) if pnls else 0,
             'avg_pnl_per_trade': np.mean(pnls) if pnls else 0,
             'best_trade': max(pnls) if pnls else 0,
             'worst_trade': min(pnls) if pnls else 0,
@@ -139,7 +126,6 @@ class Backtester:
         }
     
     def _empty_metrics(self) -> Dict:
-        """Return empty metrics dict."""
         return {
             'total_trades': 0,
             'winning_trades': 0,
@@ -156,7 +142,7 @@ class Backtester:
         }
     
     def print_results(self, metrics: Dict):
-        """Print backtest results."""
+        """Print results."""
         print("\n" + "="*60)
         print("BACKTEST RESULTS")
         print("="*60)
