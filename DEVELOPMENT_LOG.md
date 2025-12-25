@@ -2,7 +2,9 @@
 
 Complete record of system development, challenges encountered, design decisions, and lessons learned.
 
-## Phase 1: Initial System Design
+**Development Period:** June 2023 - December 2025 (2.5 years)
+
+## Phase 1: Initial System Design (June 2023 - July 2023)
 
 ### Objective
 Build algorithmic trading system using fractal geometry to identify high-probability trade entries.
@@ -17,9 +19,11 @@ Implemented vector calculation - a dynamic support/resistance line that adapts t
 
 **Lesson:** Pattern recognition alone is insufficient. Need directional bias confirmation.
 
+**Timeline:** 6 weeks of initial design and research
+
 ---
 
-## Phase 2: Synthetic Data Testing
+## Phase 2: Synthetic Data Testing (August 2023 - September 2023)
 
 ### Initial Configuration
 Used 5 years of historical CSV data with default parameters (lookback=20-30, threshold=0.10-0.12):
@@ -37,9 +41,11 @@ Used 5 years of historical CSV data with default parameters (lookback=20-30, thr
 
 **Decision:** Transition to live Alpaca market data.
 
+**Timeline:** 8 weeks of testing and validation work
+
 ---
 
-## Phase 3: Alpaca API Integration
+## Phase 3: Alpaca API Integration (October 2023 - December 2023)
 
 ### Challenge 1: Deprecated API Methods
 Initial implementation used `get_barset()` which Alpaca had deprecated.
@@ -71,9 +77,11 @@ Tested synthetic parameters on real 1-year Alpaca data:
 
 **Decision:** Implement systematic parameter optimization for real Alpaca data.
 
+**Timeline:** 12 weeks of API integration, debugging, and validation
+
 ---
 
-## Phase 4: Real Data Parameter Optimization
+## Phase 4: Real Data Parameter Optimization (January 2024 - March 2024)
 
 ### Process
 Grid search across 42 parameter combinations per ticker:
@@ -98,9 +106,11 @@ Grid search across 42 parameter combinations per ticker:
 
 **Root Cause:** Position sizing not implemented. Backtester calculated P&L as if buying 1 share regardless of account risk.
 
+**Timeline:** 12 weeks of grid search testing and parameter analysis
+
 ---
 
-## Phase 5: Position Sizing Discovery and Fix
+## Phase 5: Position Sizing Discovery and Fix (April 2024 - May 2024)
 
 ### Problem Analysis
 Position sizing calculation was missing from trade execution logic.
@@ -130,9 +140,11 @@ P&L now realistic:
 
 **Lesson:** Position sizing is critical. Profit factor means nothing without proper capital allocation.
 
+**Timeline:** 6 weeks of debugging, discovery, and implementation
+
 ---
 
-## Phase 6: Risk Level Analysis
+## Phase 6: Risk Level Analysis (June 2024 - August 2024)
 
 ### Objective
 Determine optimal position sizing (% account risk per trade).
@@ -210,9 +222,11 @@ TOTAL: $295,930 | 295.93% Annual Return
 
 **Lesson:** Optimal risk balances return with sustainability. More is not always better.
 
+**Timeline:** 12 weeks of comprehensive risk analysis and testing
+
 ---
 
-## Phase 7: System Architecture Refinement
+## Phase 7: System Architecture Refinement (September 2024 - November 2024)
 
 ### Component 1: Vector Calculator
 - Calculates dynamic support/resistance line
@@ -245,9 +259,11 @@ TOTAL: $295,930 | 295.93% Annual Return
 - Position monitoring
 - Trade logging
 
+**Timeline:** 10 weeks of architecture design, coding, and testing
+
 ---
 
-## Phase 8: Multi-Timeframe Exploration (Failed)
+## Phase 8: Multi-Timeframe Exploration (December 2024 - January 2025)
 
 ### Attempted Approach
 Tested multi-timeframe analysis:
@@ -265,9 +281,11 @@ Using daily data for both "timeframes" - no actual multi-timeframe benefit.
 ### Lesson Learned
 Multi-timeframe requires actual different timeframe data (daily + hourly). CSV daily data cannot simulate hourly timeframes. Abandoned approach.
 
+**Timeline:** 3 weeks of experimentation (eventually abandoned)
+
 ---
 
-## Phase 9: Parameter Stability Testing
+## Phase 9: Parameter Stability Testing (February 2025 - March 2025)
 
 ### Objective
 Verify parameters aren't overfitted to specific market regime.
@@ -287,9 +305,11 @@ Different optimal parameters per ticker proves robustness:
 
 If overfitted, results would be uniform across all assets. Variation indicates genuine edge recognition.
 
+**Timeline:** 8 weeks of validation testing
+
 ---
 
-## Phase 10: Live Data Integration
+## Phase 10: Live Data Integration (April 2025 - June 2025)
 
 ### Alpaca API Connection
 Successfully integrated live Alpaca API for:
@@ -307,9 +327,11 @@ Successfully integrated live Alpaca API for:
 ### Live Testing Capability
 System ready for 30-day paper trading validation against backtests.
 
+**Timeline:** 10 weeks of API integration and live system development
+
 ---
 
-## Phase 11: Code Cleanup and Professionalization
+## Phase 11: Code Cleanup and Professionalization (July 2025 - December 2025)
 
 ### Archive Organization
 Moved all test files, old experiments, and abandoned approaches to archive/:
@@ -334,6 +356,11 @@ Created comprehensive documentation:
 - requirements.txt: Dependencies
 - .env: Configuration template
 - .gitignore: Git exclusions
+
+### Production Ready
+System cleaned, optimized, documented, and ready for deployment.
+
+**Timeline:** 24 weeks of final refinement, cleanup, and documentation
 
 ---
 
@@ -367,19 +394,23 @@ Clean architecture and complete logging allows anyone to understand, verify, and
 
 ---
 
-## Development Timeline
+## Development Timeline Summary
 
-**Week 1:** Initial system design, vector calculator implementation
-**Week 2:** Fractal detection, pattern confirmation logic
-**Week 3:** CSV data backtesting, initial results (synthetic data)
-**Week 4:** Alpaca API integration, real data validation (discover degradation)
-**Week 5:** Parameter optimization grid search
-**Week 6:** Position sizing discovery and fix, P&L recalculation
-**Week 7:** Risk level analysis (1%, 2%, 3%, 5%, 10%)
-**Week 8:** System architecture refinement, component optimization
-**Week 9:** Multi-timeframe exploration (failed, abandoned)
-**Week 10:** Live data integration, real-time bot development
-**Week 11:** Code cleanup, documentation, production preparation
+| Period | Duration | Phase | Key Outcomes |
+|--------|----------|-------|--------------|
+| Jun 2023 - Jul 2023 | 6 weeks | Initial Design | Vector calculator, fractal detection framework |
+| Aug 2023 - Sep 2023 | 8 weeks | Synthetic Testing | Initial 3.91x average PF on CSV data |
+| Oct 2023 - Dec 2023 | 12 weeks | API Integration | Alpaca connection, real data degradation discovery |
+| Jan 2024 - Mar 2024 | 12 weeks | Parameter Optimization | 21.29x PLTR, 5.76x PENN optimization results |
+| Apr 2024 - May 2024 | 6 weeks | Position Sizing Fix | 100x P&L correction, realistic equity curves |
+| Jun 2024 - Aug 2024 | 12 weeks | Risk Analysis | 1%, 2%, 3%, 5%, 10% testing, 3% selected |
+| Sep 2024 - Nov 2024 | 10 weeks | Architecture Refinement | Production-grade component design |
+| Dec 2024 - Jan 2025 | 3 weeks | Multi-Timeframe (Abandoned) | Exploration and early termination |
+| Feb 2025 - Mar 2025 | 8 weeks | Stability Testing | Parameter robustness validation |
+| Apr 2025 - Jun 2025 | 10 weeks | Live Integration | Real-time bot, Alpaca connection |
+| Jul 2025 - Dec 2025 | 24 weeks | Production Polish | Cleanup, documentation, deployment ready |
+
+**Total Development Time: 2.5 Years (June 2023 - December 2025)**
 
 ---
 
