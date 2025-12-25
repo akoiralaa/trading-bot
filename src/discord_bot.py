@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 import io
 
 
-class FractalBot(commands.Cog):
-    """Discord bot for RCG Fractal Trading System."""
+class QuantumFractalsBot(commands.Cog):
+    """Discord bot for Quantum Fractals Trading System."""
     
     def __init__(self, bot):
         self.bot = bot
@@ -24,14 +24,14 @@ class FractalBot(commands.Cog):
     async def status(self, ctx):
         """Show bot status and system health."""
         try:
-            embed = discord.Embed(title="🟢 Trading Bot Status", color=0x00FF00)
-            embed.add_field(name="Bot Status", value="✅ Online", inline=False)
-            embed.add_field(name="System", value="RCG Fractal Trading System", inline=False)
-            embed.add_field(name="Vector Calculator", value="✅ Active", inline=True)
-            embed.add_field(name="Fractal Detector", value="✅ Active", inline=True)
-            embed.add_field(name="Pattern Recognizer", value="✅ Active", inline=True)
-            embed.add_field(name="Backtester", value="✅ Ready", inline=True)
-            embed.add_field(name="Discord Bot", value="✅ Connected", inline=True)
+            embed = discord.Embed(title="Quantum Fractals Status", color=0x00FF00)
+            embed.add_field(name="Bot Status", value="Online", inline=False)
+            embed.add_field(name="System", value="Quantum Fractals Trading Engine", inline=False)
+            embed.add_field(name="Vector Calculator", value="Active", inline=True)
+            embed.add_field(name="Fractal Detector", value="Active", inline=True)
+            embed.add_field(name="Pattern Recognizer", value="Active", inline=True)
+            embed.add_field(name="Backtester", value="Ready", inline=True)
+            embed.add_field(name="Discord Bot", value="Connected", inline=True)
             embed.add_field(name="Uptime", value="24/7", inline=True)
             await ctx.send(embed=embed)
         except Exception as e:
@@ -65,7 +65,7 @@ class FractalBot(commands.Cog):
         """Get current trading signal."""
         try:
             embed = discord.Embed(title=f"{ticker} Signal", color=0x0000ff)
-            embed.add_field(name="Status", value="🟢 BULLISH", inline=False)
+            embed.add_field(name="Status", value="BULLISH", inline=False)
             embed.add_field(name="Entry", value="Table Top B Confirmed", inline=False)
             embed.add_field(name="Stop Loss", value="$590.00", inline=False)
             embed.add_field(name="Target", value="$610.00", inline=False)
@@ -83,7 +83,7 @@ class FractalBot(commands.Cog):
             embed.add_field(name="Total Trades", value=f"{metrics['total_trades']}", inline=True)
             embed.add_field(name="Win Rate", value=f"{metrics['win_rate']:.2f}%", inline=True)
             embed.add_field(name="Total P&L", value=f"${metrics['total_pnl']:.2f}", inline=True)
-            embed.add_field(name="Avg Trade", value=f"${metrics['avg_trade']:.2f}", inline=True)
+            embed.add_field(name="Avg Trade", value=f"{metrics['avg_trade']:.2f}", inline=True)
             embed.add_field(name="Best Trade", value=f"${metrics['best_trade']:.2f}", inline=True)
             embed.add_field(name="Worst Trade", value=f"${metrics['worst_trade']:.2f}", inline=True)
             embed.add_field(name="Profit Factor", value=f"{metrics['profit_factor']:.2f}x", inline=True)
@@ -107,7 +107,7 @@ class FractalBot(commands.Cog):
     @commands.command(name='commands')
     async def commands_list(self, ctx):
         """Show available commands."""
-        embed = discord.Embed(title="🤖 Fractal Trading Bot Commands", color=0x9900FF)
+        embed = discord.Embed(title="Quantum Fractals Commands", color=0x9900FF)
         embed.add_field(name="!status", value="Show bot status", inline=False)
         embed.add_field(name="!fractal [TICKER] [TIMEFRAME]", value="Analyze fractal zones (default: QQQ daily)", inline=False)
         embed.add_field(name="!zone [TICKER]", value="Get support/resistance zones (default: QQQ)", inline=False)
@@ -132,7 +132,7 @@ class FractalBot(commands.Cog):
         ax.axhline(y=np.mean(prices), color='r', linestyle='--', label='Vector')
         ax.fill_between(range(len(prices)), np.min(prices)*0.98, np.max(prices)*1.02, alpha=0.2, color='green', label='Support Zone')
         
-        ax.set_title(f'{ticker} {timeframe.upper()} - Fractal Zones', fontsize=14, fontweight='bold')
+        ax.set_title(f'{ticker} {timeframe.upper()} - Quantum Fractals Analysis', fontsize=14, fontweight='bold')
         ax.set_xlabel('Time')
         ax.set_ylabel('Price')
         ax.legend()
@@ -147,5 +147,5 @@ class FractalBot(commands.Cog):
 
 
 async def setup(bot):
-    """Add cog to bot."""
-    await bot.add_cog(FractalBot(bot))
+    """Add Quantum Fractals cog to bot."""
+    await bot.add_cog(QuantumFractalsBot(bot))
