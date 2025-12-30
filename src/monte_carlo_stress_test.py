@@ -1,189 +1,132 @@
 import numpy as np
 from scipy import stats
-from typing import Dict, List
+from typing import Dict, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
-
 class MonteCarloStressTest:
     """
-    Monte Carlo simulation for stress testing trading strategies.
-    Creates probability cone of future equity and identifies risk of ruin.
+    Stochastic risk engine for strategy validation and tail-risk quantification.
+    
+    Utilizes bootstrap resampling to generate multi-path equity distributions, 
+    quantifying the 'Risk of Ruin' and 'Conditional Value at Risk' (CVaR) under 
+    non-Gaussian return assumptions.
     """
     
     def __init__(self, initial_equity: float = 100000, simulations: int = 10000) -> None:
-        self.initial_equity = initial_equity
-        self.simulations = simulations
-        logger.info(f"MonteCarloStressTest initialized: equity={initial_equity}, sims={simulations}")
-    
-    def run_probability_cone(self, trade_returns: np.ndarray, confidence_levels: List[int] = None) -> Dict:
         """
-        Shuffle trade returns and run Monte Carlo to create probability cone.
-        Shows best case, worst case, and median outcome.
+        Initializes the simulator with specified capital and iteration depth.
         
         Args:
-            trade_returns: Array of historical trade returns
-            confidence_levels: Percentiles to calculate (default [5, 25, 50, 75, 95])
+            initial_equity: Starting capital for path calculation.
+            simulations: Number of stochastic paths to generate ($N \geq 10,000$ recommended).
+        """
+        self.initial_equity = initial_equity
+        self.simulations = simulations
+        logger.info(f"RiskEngine: Equity={initial_equity}, Iterations={simulations}")
+    
+    def run_probability_cone(self, trade_returns: np.ndarray, confidence_levels: Optional[List[int]] = None) -> Dict:
+        """
+        Generates a fan chart of potential equity trajectories via bootstrap sampling.
         
-        Returns:
-            Dict with probability cone metrics
+        Analyzes path dependency by aggregating the cumulative product of 
+        shuffled return vectors across $N$ simulations.
         """
         if confidence_levels is None:
             confidence_levels = [5, 25, 50, 75, 95]
         
-        logger.info(f"Running probability cone: {self.simulations} simulations on {len(trade_returns)} returns")
+        # Vectorized bootstrapping of return paths
+        # Returns shape: (simulations, trade_count)
+        shuffled_indices = np.random.randint(0, len(trade_returns), size=(self.simulations, len(trade_returns)))
+        path_returns = trade_returns[shuffled_indices]
         
-        equity_paths: List = []
+        # Cumulative product for equity trajectory: E_t = E_0 * prod(1 + r_i)
+        equity_array = np.cumprod(1 + path_returns, axis=1) * self.initial_equity
         
-        for sim_num in range(self.simulations):
-            shuffled_returns: np.ndarray = np.random.choice(trade_returns, size=len(trade_returns), replace=True)
-            equity_curve: np.ndarray = np.cumprod(1 + shuffled_returns) * self.initial_equity
-            equity_paths.append(equity_curve)
+        percentiles = {f'p{conf}': np.percentile(equity_array, conf, axis=0) for conf in confidence_levels}
+        final_dist = equity_array[:, -1]
         
-        equity_array: np.ndarray = np.array(equity_paths)
-        
-        percentiles: Dict = {}
-        for conf in confidence_levels:
-            percentiles[f'p{conf}'] = np.percentile(equity_array, conf, axis=0)
-        
-        worst_case: float = np.percentile(equity_array[:, -1], 5)
-        best_case: float = np.percentile(equity_array[:, -1], 95)
-        median: float = np.percentile(equity_array[:, -1], 50)
-        
-        result: Dict = {
+        return {
             'paths': equity_array,
-            'final_equity': equity_array[:, -1],
+            'final_equity_dist': final_dist,
             'percentiles': percentiles,
-            'worst_case': worst_case,
-            'best_case': best_case,
-            'median': median,
-            'std_dev': np.std(equity_array[:, -1])
+            'p5_worst_case': np.percentile(final_dist, 5),
+            'p50_median': np.percentile(final_dist, 50),
+            'p95_best_case': np.percentile(final_dist, 95),
+            'terminal_std': np.std(final_dist)
         }
-        
-        logger.info(f"Probability cone: worst={worst_case:.0f}, median={median:.0f}, best={best_case:.0f}")
-        
-        return result
     
     def calculate_risk_of_ruin(self, trade_returns: np.ndarray, ruin_threshold: float = 0.20) -> Dict:
         """
-        What % of simulations result in account decline > 20%?
+        Quantifies the probability of crossing a terminal drawdown threshold.
         
-        Args:
-            trade_returns: Array of historical trade returns
-            ruin_threshold: Drawdown threshold (default 20%)
-        
-        Returns:
-            Dict with risk of ruin metrics
+        Calculates $P(E_{final} < E_0 \cdot (1 - \theta))$ where $\theta$ is the 
+        ruin threshold (e.g., 0.20 for a 20% total account impairment).
         """
-        logger.info(f"Calculating risk of ruin: {self.simulations} sims, threshold={ruin_threshold*100}%")
+        shuffled_indices = np.random.randint(0, len(trade_returns), size=(self.simulations, len(trade_returns)))
+        final_equities = np.prod(1 + trade_returns[shuffled_indices], axis=1) * self.initial_equity
         
-        equity_paths: List = []
+        ruin_level = self.initial_equity * (1 - ruin_threshold)
+        ruin_count = np.sum(final_equities < ruin_level)
+        ror = ruin_count / self.simulations
+        
+        logger.warning(f"TailRisk: RiskOfRuin={ror*100:.2f}% | Threshold={ruin_threshold}")
+        
+        return {
+            'risk_of_ruin_pct': ror * 100,
+            'threshold_value': ruin_level,
+            'failure_count': ruin_count
+        }
+
+    
+
+    def stress_test_shocks(self, trade_returns: np.ndarray, shock_mag: float = -0.10, 
+                          shock_prob: float = 0.10) -> Dict:
+        """
+        Performs kurtosis injection to simulate 'Black Swan' events.
+        
+        Artificially introduces low-probability, high-severity negative returns 
+        into the return distribution to test system robustness against tail events.
+        """
+        final_equities = []
+        max_dds = []
         
         for _ in range(self.simulations):
-            shuffled_returns: np.ndarray = np.random.choice(trade_returns, size=len(trade_returns), replace=True)
-            equity_curve: np.ndarray = np.cumprod(1 + shuffled_returns) * self.initial_equity
-            equity_paths.append(equity_curve[-1])
-        
-        ruin_level: float = self.initial_equity * (1 - ruin_threshold)
-        ruin_count: int = sum(1 for eq in equity_paths if eq < ruin_level)
-        risk_of_ruin: float = ruin_count / self.simulations
-        
-        result: Dict = {
-            'risk_of_ruin_pct': risk_of_ruin * 100,
-            'ruin_threshold': ruin_threshold,
-            'simulations_in_ruin': ruin_count,
-            'final_equities': equity_paths
-        }
-        
-        logger.warning(f"Risk of Ruin: {risk_of_ruin*100:.2f}% ({ruin_count}/{self.simulations} sims)")
-        
-        return result
-    
-    def stress_test_crashes(self, trade_returns: np.ndarray, crash_magnitude: float = -0.10, 
-                           crash_injection_pct: float = 0.10) -> Dict:
-        """
-        Inject artificial market crashes and test survival.
-        
-        Args:
-            trade_returns: Array of historical trade returns
-            crash_magnitude: Severity of crash (default -10%)
-            crash_injection_pct: Probability of crash injection (default 10%)
-        
-        Returns:
-            Dict with crash stress test results
-        """
-        logger.info(f"Running crash stress test: magnitude={crash_magnitude*100}%, injection={crash_injection_pct*100}%")
-        
-        results: List = []
-        crash_count: int = 0
-        
-        for sim in range(self.simulations):
-            returns: np.ndarray = np.random.choice(trade_returns, size=len(trade_returns), replace=True)
+            path = np.random.choice(trade_returns, size=len(trade_returns), replace=True)
             
-            if np.random.random() < crash_injection_pct:
-                crash_idx: int = np.random.randint(0, len(returns))
-                returns[crash_idx] = crash_magnitude
-                crash_count += 1
+            # Stochastic shock injection
+            if np.random.random() < shock_prob:
+                path[np.random.randint(0, len(path))] = shock_mag
+                
+            equity_curve = np.cumprod(1 + path) * self.initial_equity
+            final_equities.append(equity_curve[-1])
+            max_dds.append(np.min(equity_curve / self.initial_equity) - 1)
             
-            equity_curve: np.ndarray = np.cumprod(1 + returns) * self.initial_equity
-            results.append({
-                'final_equity': equity_curve[-1],
-                'min_equity': np.min(equity_curve),
-                'max_drawdown': (np.min(equity_curve) - self.initial_equity) / self.initial_equity
-            })
-        
-        final_equities: List = [r['final_equity'] for r in results]
-        max_drawdowns: List = [r['max_drawdown'] for r in results]
-        
-        survival_rate: float = sum(1 for eq in final_equities if eq > self.initial_equity * 0.8) / len(final_equities)
-        
-        result: Dict = {
-            'median_final_equity': np.median(final_equities),
-            'worst_final_equity': np.percentile(final_equities, 5),
-            'best_final_equity': np.percentile(final_equities, 95),
-            'worst_drawdown': np.min(max_drawdowns),
-            'avg_drawdown': np.mean(max_drawdowns),
-            'survival_rate': survival_rate,
-            'crashes_injected': crash_count
+        return {
+            'shock_survival_rate': np.sum(np.array(final_equities) > (self.initial_equity * 0.8)) / self.simulations,
+            'median_drawdown': np.median(max_dds),
+            'tail_drawdown_p5': np.percentile(max_dds, 5)
         }
-        
-        logger.info(f"Crash test: survival_rate={survival_rate*100:.2f}%, worst_dd={np.min(max_drawdowns)*100:.2f}%")
-        
-        return result
-    
-    def calculate_var_cvar(self, trade_returns: np.ndarray, confidence: float = 0.95) -> Dict:
+
+    def get_tail_risk_metrics(self, trade_returns: np.ndarray, alpha: float = 0.95) -> Dict:
         """
-        Value at Risk & Conditional Value at Risk.
+        Calculates Value at Risk (VaR) and Conditional Value at Risk (CVaR).
         
-        Args:
-            trade_returns: Array of historical trade returns
-            confidence: Confidence level (default 95%)
-        
-        Returns:
-            Dict with VaR and CVaR metrics
+        CVaR (Expected Shortfall) provides the average loss in the $(1-\alpha)$ 
+        worst cases, offering a superior risk measure for non-normal distributions.
         """
-        logger.info(f"Calculating VaR/CVaR: confidence={confidence*100}%")
+        shuffled_indices = np.random.randint(0, len(trade_returns), size=(self.simulations, len(trade_returns)))
+        final_dist = np.prod(1 + trade_returns[shuffled_indices], axis=1) * self.initial_equity
         
-        equity_paths: List = []
+        # VaR is the (1-alpha) percentile of the final equity distribution
+        var_threshold = np.percentile(final_dist, (1 - alpha) * 100)
         
-        for _ in range(self.simulations):
-            shuffled: np.ndarray = np.random.choice(trade_returns, size=len(trade_returns), replace=True)
-            equity: float = np.prod(1 + shuffled) * self.initial_equity
-            equity_paths.append(equity)
+        # CVaR is the expectation of the distribution below the VaR threshold
+        cvar = final_dist[final_dist <= var_threshold].mean()
         
-        percentile: float = (1 - confidence) * 100
-        var: float = np.percentile(equity_paths, percentile)
-        cvar: float = np.mean([eq for eq in equity_paths if eq <= var])
-        
-        result: Dict = {
-            'value_at_risk': var,
-            'conditional_var': cvar,
-            'confidence_level': confidence,
-            'expected_loss': self.initial_equity - cvar,
-            'loss_pct': ((self.initial_equity - cvar) / self.initial_equity) * 100
+        return {
+            'var_alpha': var_threshold,
+            'cvar_expected_shortfall': cvar,
+            'max_expected_loss_pct': ((self.initial_equity - cvar) / self.initial_equity) * 100
         }
-        
-        logger.info(f"VaR {confidence*100:.0f}%: {var:.0f}, CVaR: {cvar:.0f}, max loss: {result['loss_pct']:.2f}%")
-        
-        return result
