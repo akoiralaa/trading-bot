@@ -49,4 +49,7 @@ Thumbs.db
 # Project specific
 archive/
 results/
-.streamlit/secrets/toml
+.streamlit/secrets/tomllogs/
+data/
+*.pyc
+__pycache__/
