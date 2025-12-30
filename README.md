@@ -2,6 +2,30 @@
 
 Institutional-grade algorithmic trading system with advanced market friction modeling, Bayesian Kelly position sizing, and Monte Carlo stress testing.
 
+## Disclaimer
+
+**This software is for educational and research purposes only.** 
+
+All trading involves substantial risk of loss. Past performance does not guarantee future results. The use of algorithmic trading strategies, including Bayesian-leveraged position sizing, can result in significant account drawdowns if underlying model assumptions are violated or market conditions change unexpectedly.
+
+**Before using this system:**
+- Paper trade for a minimum of 30 days to validate strategy performance
+- Test across different market regimes (bull, bear, sideways, high volatility)
+- Understand all risk parameters (3% position sizing, 5.97% max drawdown, etc.)
+- Start with small position sizes on live trading
+- Never risk capital you cannot afford to lose
+- Consult with a financial advisor if uncertain
+
+**Key Risk Factors:**
+- Fractal patterns may fail during market structure breaks or gaps
+- Vector strength calculation relies on historical volatility assumptions
+- Monte Carlo simulations are based on past return distributions
+- Slippage and market impact models may differ in actual execution
+- Black swan events can exceed model tail risk estimates
+
+**No guarantee of profitability or that this system will perform as backtested.**
+
+
 ## Performance Summary
 
 Real Market Data Validation (1 Year Historical Backtest)
