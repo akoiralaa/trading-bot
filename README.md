@@ -151,11 +151,11 @@ pip3 install numpy scipy pandas alpaca-trade-api
 ## Setup
 
 Create .env file with Alpaca credentials:
-
+```
 ALPACA_API_KEY=your_public_key
 ALPACA_SECRET_KEY=your_secret_key
 ALPACA_BASE_URL=https://paper-api.alpaca.markets
-
+```
 ## Usage
 
 Run unit tests:
