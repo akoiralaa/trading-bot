@@ -1,17 +1,3 @@
-"""
-Statistical Vector Zone Dashboard
-Real-time visualization of hypothesis testing in trading
-
-Shows:
-1. Price action with vector zone detection
-2. P-value fluctuating as signal strengthens/weakens
-3. Confidence multiplier scaling position size
-4. Comparative performance (naive vs statistical)
-5. Monte Carlo distribution
-
-This is the VISUAL PROOF that statistical filtering works.
-"""
-
 import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -22,22 +8,15 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-# ============================================================================
-# CORE STATISTICAL FUNCTIONS
-# ============================================================================
-
 def generate_realistic_market_data(n_points=300, num_regimes=3):
     """
-    Generate realistic market data with:
-    - Trending regimes (signal present)
-    - Sideways regimes (noise dominant)
-    - Volatile regimes (high uncertainty)
+    Generate synthetic price data with three market regimes:
+    - Uptrend with low vol
+    - Sideways with high vol (noise dominant)
+    - Downtrend with medium vol
     """
     t = np.arange(n_points)
-    
-    # Create regime changes
     regime_length = n_points // num_regimes
-    
     price_data = [100]
     
     for regime_idx in range(num_regimes):
@@ -46,17 +25,14 @@ def generate_realistic_market_data(n_points=300, num_regimes=3):
         regime_length_actual = regime_end - regime_start
         
         if regime_idx % 3 == 0:
-            # Trending regime: clear uptrend
             drift = 0.08
             vol = 0.8
             label = "Uptrend"
         elif regime_idx % 3 == 1:
-            # Sideways regime: noise dominant
             drift = 0.005
             vol = 1.5
             label = "Sideways"
         else:
-            # Downtrend with lower vol
             drift = -0.06
             vol = 0.7
             label = "Downtrend"
@@ -65,9 +41,14 @@ def generate_realistic_market_data(n_points=300, num_regimes=3):
         regime_prices = price_data[-1] * np.exp(np.cumsum(returns))
         price_data.extend(regime_prices)
     
-    price_data = np.array(price_data[1:])  # Remove initial 100
+    price_data = np.array(price_data[1:])
     
-    # Generate volume (correlated with volatility)
+    # Ensure exact length
+    if len(price_data) > n_points:
+        price_data = price_data[:n_points]
+    elif len(price_data) < n_points:
+        price_data = np.append(price_data, [price_data[-1]] * (n_points - len(price_data)))
+    
     volatility = pd.Series(price_data).pct_change().rolling(10).std()
     base_volume = np.random.uniform(100, 500, n_points)
     volume = base_volume * (1 + volatility.fillna(0) * 10)
@@ -82,8 +63,9 @@ def generate_realistic_market_data(n_points=300, num_regimes=3):
 
 def calculate_vector_stats(data, window=20):
     """
-    Calculate regression slope, t-statistic, p-value for each bar
-    Returns: slopes, t_stats, p_values, r2_values, confidence_multipliers
+    For each bar, fit regression line to last 'window' bars.
+    Test if slope is statistically significant using t-test.
+    Return p-value and confidence multiplier.
     """
     slopes = []
     t_stats = []
@@ -100,14 +82,10 @@ def calculate_vector_stats(data, window=20):
             confidence_mults.append(0)
             continue
         
-        # Get price window
         y = data['close'].iloc[i-window:i].values
         x = np.arange(window)
-        
-        # Perform linear regression
         slope, intercept, r_val, p_val, std_err = stats.linregress(x, y)
         
-        # Calculate t-statistic
         if std_err > 0:
             t_stat = slope / std_err
         else:
@@ -118,7 +96,7 @@ def calculate_vector_stats(data, window=20):
         p_values.append(p_val)
         r2_values.append(r_val ** 2)
         
-        # Calculate confidence multiplier (linear scaling)
+        # Confidence ranges from 0 (p=0.05) to 1.0 (p=0.001)
         if p_val > 0.05:
             confidence = 0.0
         else:
@@ -130,11 +108,12 @@ def calculate_vector_stats(data, window=20):
 
 def get_vector_zones(data, window=20, atr_period=14):
     """
-    Calculate vector zones (upper/lower bands)
+    Create vector zones: regression line +/- band width.
+    Band width = ATR * (0.5 + confidence * 0.5)
+    Wide bands when confident, narrow bands when uncertain.
     """
     slopes, t_stats, p_values, r2s, confs = calculate_vector_stats(data, window)
     
-    # Calculate ATR for zone width
     high_low = data['high'] - data['low']
     high_close = abs(data['high'] - data['close'].shift())
     low_close = abs(data['low'] - data['close'].shift())
@@ -148,11 +127,9 @@ def get_vector_zones(data, window=20, atr_period=14):
     data['confidence'] = confs
     data['atr'] = atr.fillna(atr.mean())
     
-    # Vector line and zones
     data['vector'] = data['slope'] * np.arange(len(data))
     data['vector'] = data['vector'] - data['vector'].iloc[window] + data['close'].iloc[window]
     
-    # Zone width = ATR * (1 + confidence boost)
     data['zone_width'] = data['atr'] * (0.5 + data['confidence'] * 0.5)
     data['upper_band'] = data['vector'] + data['zone_width']
     data['lower_band'] = data['vector'] - data['zone_width']
@@ -162,9 +139,12 @@ def get_vector_zones(data, window=20, atr_period=14):
 
 def simulate_naive_vs_statistical(data, kelly=0.03):
     """
-    Simulate two strategies on same data:
-    1. Naive: Always 100% Kelly
-    2. Statistical: Kelly × Confidence
+    Compare two strategies on same data:
+    1. Naive: fixed position size (100% Kelly)
+    2. Statistical: position size = Kelly * confidence
+    
+    Both enter on same signal (p < 0.05 + slope direction).
+    Only difference is position sizing.
     """
     equity_naive = [100000]
     equity_stat = [100000]
@@ -178,11 +158,8 @@ def simulate_naive_vs_statistical(data, kelly=0.03):
     trades_stat = []
     
     for i in range(1, len(data)):
-        
-        # Return this bar
         ret = (data['close'].iloc[i] - data['close'].iloc[i-1]) / data['close'].iloc[i-1]
         
-        # P&L
         if position_naive != 0:
             pnl_naive = equity_naive[-1] * position_naive * ret
         else:
@@ -196,7 +173,6 @@ def simulate_naive_vs_statistical(data, kelly=0.03):
         equity_naive.append(equity_naive[-1] + pnl_naive)
         equity_stat.append(equity_stat[-1] + pnl_stat)
         
-        # Generate signal (simple: strong trend up = long)
         signal = 0
         if data['p_value'].iloc[i] < 0.05 and data['slope'].iloc[i] > 0:
             signal = 1
@@ -204,7 +180,6 @@ def simulate_naive_vs_statistical(data, kelly=0.03):
             signal = -1
         
         if signal != 0:
-            # Close previous positions
             if position_naive != 0:
                 exit_ret = (data['close'].iloc[i] - entry_naive) / entry_naive
                 trades_naive.append({
@@ -223,9 +198,8 @@ def simulate_naive_vs_statistical(data, kelly=0.03):
                     'p_value': data['p_value'].iloc[i]
                 })
             
-            # Open new positions
-            position_naive = signal  # Always 100%
-            position_stat = signal * data['confidence'].iloc[i]  # Scaled by confidence
+            position_naive = signal
+            position_stat = signal * data['confidence'].iloc[i]
             entry_naive = data['close'].iloc[i]
             entry_stat = data['close'].iloc[i]
     
@@ -242,7 +216,7 @@ def simulate_naive_vs_statistical(data, kelly=0.03):
 
 
 def calculate_metrics(equity, trades):
-    """Calculate performance metrics"""
+    """Calculate Sharpe, win rate, max drawdown from equity curve."""
     total_return = (equity[-1] - equity[0]) / equity[0]
     
     returns = np.diff(equity) / equity[:-1]
@@ -270,13 +244,8 @@ def calculate_metrics(equity, trades):
     }
 
 
-# ============================================================================
-# STREAMLIT UI
-# ============================================================================
-
 st.set_page_config(layout="wide", page_title="Statistical Vector Zones")
 
-# Custom CSS
 st.markdown("""
 <style>
     .metric-box {
@@ -294,61 +263,44 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================================
-# TITLE & DESCRIPTION
-# ============================================================================
-
-st.markdown("<div class='header-title'>🔬 Statistical Vector Zone Dashboard</div>", unsafe_allow_html=True)
+st.markdown("<div class='header-title'>Statistical Vector Zone Dashboard</div>", unsafe_allow_html=True)
 st.markdown("### Real-time Visualization of Pattern Significance Testing")
 
 st.markdown("""
-**The Core Insight**: Most traders trade patterns without asking: *"Is this real?"*
+Most traders trade patterns without asking: "Is this actually real or just noise?"
 
 This dashboard shows what happens when you:
-1. **Test** if the pattern is statistically significant (p-value)
-2. **Scale** position size by confidence (p-value → multiplier)
-3. **Compare** against naive fixed-size trading
+1. Test if the pattern is statistically significant (p-value)
+2. Scale position size by confidence (p-value to multiplier)
+3. Compare against naive fixed-size trading
 
-Watch how p-values fluctuate in real-time as trends strengthen or collapse into noise.
+Watch how p-values change as trends strengthen or collapse into noise.
 """)
 
-# ============================================================================
-# SIDEBAR CONTROLS
-# ============================================================================
-
-st.sidebar.markdown("### ⚙️ Parameters")
+st.sidebar.markdown("### Parameters")
 
 lookback = st.sidebar.slider("Vector Lookback Window", 10, 50, 20, help="Bars for regression")
-alpha = st.sidebar.slider("Significance Level (α)", 0.01, 0.10, 0.05, help="p-value threshold")
+alpha = st.sidebar.slider("Significance Level (alpha)", 0.01, 0.10, 0.05, help="p-value threshold")
 n_points = st.sidebar.slider("Data Points", 100, 500, 300)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📊 Display Options")
+st.sidebar.markdown("### Display Options")
 show_zones = st.sidebar.checkbox("Show Vector Zones", value=True)
 show_confidence = st.sidebar.checkbox("Show Confidence Scaling", value=True)
 show_comparison = st.sidebar.checkbox("Show Naive vs Statistical", value=True)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📌 Current Market Regime")
+st.sidebar.markdown("### Current Market Regime")
 regime_info = st.sidebar.empty()
-
-# ============================================================================
-# GENERATE DATA & CALCULATIONS
-# ============================================================================
 
 df = generate_realistic_market_data(n_points=n_points, num_regimes=3)
 df = get_vector_zones(df, window=lookback)
 
-# Identify regimes
 uptrend_periods = (df['slope'] > 0.01).astype(int)
 sideways_periods = ((df['slope'].abs() < 0.005) & (df['p_value'] > 0.1)).astype(int)
 downtrend_periods = (df['slope'] < -0.01).astype(int)
 
-# ============================================================================
-# MAIN VISUALIZATION
-# ============================================================================
-
-st.markdown("### 📈 Price Action & Vector Significance")
+st.markdown("### Price Action and Vector Significance")
 
 fig = make_subplots(
     rows=4, cols=1,
@@ -356,14 +308,13 @@ fig = make_subplots(
     vertical_spacing=0.08,
     row_heights=[0.4, 0.2, 0.2, 0.2],
     subplot_titles=(
-        "Price & Vector Zone",
+        "Price and Vector Zone",
         "P-Value (Log Scale) - Significance Test",
         "Confidence Multiplier - Position Scaling",
         "Slope Magnitude - Trend Strength"
     )
 )
 
-# Row 1: Price and Vector Zones
 fig.add_trace(
     go.Scatter(x=df.index, y=df['close'], name="Close Price", 
                line=dict(color='white', width=2)),
@@ -371,28 +322,24 @@ fig.add_trace(
 )
 
 if show_zones:
-    # Upper band
     fig.add_trace(
         go.Scatter(x=df.index, y=df['upper_band'], name="Upper Band",
                    line=dict(color='cyan', width=1, dash='dash')),
         row=1, col=1
     )
     
-    # Lower band
     fig.add_trace(
         go.Scatter(x=df.index, y=df['lower_band'], name="Lower Band",
                    line=dict(color='cyan', width=1, dash='dash')),
         row=1, col=1
     )
     
-    # Vector line
     fig.add_trace(
         go.Scatter(x=df.index, y=df['vector'], name="Vector Line",
                    line=dict(color='lime', width=2)),
         row=1, col=1
     )
 
-# Highlight significant periods
 sig_indices = df[df['p_value'] < alpha].index
 if len(sig_indices) > 0:
     fig.add_trace(
@@ -402,7 +349,6 @@ if len(sig_indices) > 0:
         row=1, col=1
     )
 
-# Row 2: P-Value (Log Scale)
 fig.add_trace(
     go.Scatter(x=df.index, y=df['p_value'], name="P-Value",
                line=dict(color='red', width=2),
@@ -410,13 +356,11 @@ fig.add_trace(
     row=2, col=1
 )
 
-# Alpha cutoff
 fig.add_hline(y=alpha, line_dash="dash", line_color="white", 
-              annotation_text=f"α = {alpha}", row=2, col=1)
+              annotation_text=f"alpha = {alpha}", row=2, col=1)
 
 fig.update_yaxes(type="log", row=2, col=1)
 
-# Row 3: Confidence Multiplier
 if show_confidence:
     colors = ['green' if c > 0.5 else 'yellow' if c > 0 else 'red' 
               for c in df['confidence']]
@@ -427,14 +371,12 @@ if show_confidence:
         row=3, col=1
     )
 
-# Row 4: Slope Magnitude
 fig.add_trace(
     go.Bar(x=df.index, y=df['slope'], name="Slope",
            marker=dict(color=['green' if s > 0 else 'red' for s in df['slope']])),
     row=4, col=1
 )
 
-# Layout
 fig.update_layout(
     height=1000,
     template="plotly_dark",
@@ -451,73 +393,64 @@ fig.update_yaxes(title_text="Slope", row=4, col=1)
 
 st.plotly_chart(fig, use_container_width=True)
 
-# ============================================================================
-# INTERPRETATION
-# ============================================================================
-
 st.markdown("---")
-st.markdown("### 🎯 How to Read This")
+st.markdown("### How to Read This")
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
     st.markdown("""
-    **🔴 Red Zone (P > α)**
-    - Trend is NOT statistically significant
+    **Red Zone (P > alpha)**
+    - Trend is not statistically significant
     - Could be random walk
-    - **Action**: Don't trade or trade minimal size
+    - Action: Skip or minimal size
     """)
 
 with col2:
     st.markdown("""
-    **🟡 Yellow Zone (P ≈ α)**
+    **Yellow Zone (P ≈ alpha)**
     - Barely significant
     - High uncertainty
-    - **Action**: Trade small position
+    - Action: Trade small position
     """)
 
 with col3:
     st.markdown("""
-    **🟢 Green Zone (P < α)**
-    - Trend IS statistically significant
+    **Green Zone (P < alpha)**
+    - Trend is statistically significant
     - High confidence pattern
-    - **Action**: Trade full position
+    - Action: Trade full position
     """)
-
-# ============================================================================
-# COMPARATIVE BACKTEST
-# ============================================================================
 
 if show_comparison:
     st.markdown("---")
-    st.markdown("### ⚡ Head-to-Head: Naive vs Statistical")
+    st.markdown("### Head-to-Head: Naive vs Statistical")
     
     results = simulate_naive_vs_statistical(df, kelly=0.03)
     
     metrics_naive = calculate_metrics(results['naive']['equity'], results['naive']['trades'])
     metrics_stat = calculate_metrics(results['statistical']['equity'], results['statistical']['trades'])
     
-    # Comparison table
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("#### 📊 Naive (100% Kelly)")
+        st.markdown("#### Naive (100% Kelly)")
         st.markdown(f"""
-        - **Return**: {metrics_naive['total_return']:.1%}
-        - **Sharpe**: {metrics_naive['sharpe']:.2f}
-        - **Win Rate**: {metrics_naive['win_rate']:.1%}
-        - **Max DD**: {metrics_naive['max_drawdown']:.1%}
-        - **# Trades**: {metrics_naive['num_trades']}
+        - Return: {metrics_naive['total_return']:.1%}
+        - Sharpe: {metrics_naive['sharpe']:.2f}
+        - Win Rate: {metrics_naive['win_rate']:.1%}
+        - Max DD: {metrics_naive['max_drawdown']:.1%}
+        - Trades: {metrics_naive['num_trades']}
         """)
     
     with col2:
-        st.markdown("#### 🎯 Statistical (Kelly × Confidence)")
+        st.markdown("#### Statistical (Kelly x Confidence)")
         st.markdown(f"""
-        - **Return**: {metrics_stat['total_return']:.1%}
-        - **Sharpe**: {metrics_stat['sharpe']:.2f}
-        - **Win Rate**: {metrics_stat['win_rate']:.1%}
-        - **Max DD**: {metrics_stat['max_drawdown']:.1%}
-        - **# Trades**: {metrics_stat['num_trades']}
+        - Return: {metrics_stat['total_return']:.1%}
+        - Sharpe: {metrics_stat['sharpe']:.2f}
+        - Win Rate: {metrics_stat['win_rate']:.1%}
+        - Max DD: {metrics_stat['max_drawdown']:.1%}
+        - Trades: {metrics_stat['num_trades']}
         """)
     
     with col3:
@@ -525,14 +458,13 @@ if show_comparison:
         wr_improvement = (metrics_stat['win_rate'] - metrics_naive['win_rate']) * 100
         dd_improvement = (metrics_naive['max_drawdown'] - metrics_stat['max_drawdown']) * 100
         
-        st.markdown("#### 📈 Improvement")
+        st.markdown("#### Improvement")
         st.markdown(f"""
-        - **Sharpe**: +{sharpe_improvement:.0f}%
-        - **Win Rate**: +{wr_improvement:.1f}%
-        - **Drawdown**: {dd_improvement:.1f}% better
+        - Sharpe: +{sharpe_improvement:.0f}%
+        - Win Rate: +{wr_improvement:.1f}%
+        - Drawdown: {dd_improvement:.1f}% better
         """)
     
-    # Equity curves
     st.markdown("#### Equity Curves")
     
     fig_equity = go.Figure()
@@ -547,7 +479,7 @@ if show_comparison:
     fig_equity.add_trace(
         go.Scatter(x=np.arange(len(results['statistical']['equity'])),
                    y=results['statistical']['equity'],
-                   name="Statistical (Kelly × Confidence)",
+                   name="Statistical (Kelly x Confidence)",
                    line=dict(color='cyan', width=2))
     )
     
@@ -562,12 +494,8 @@ if show_comparison:
     
     st.plotly_chart(fig_equity, use_container_width=True)
 
-# ============================================================================
-# KEY STATISTICS
-# ============================================================================
-
 st.markdown("---")
-st.markdown("### 📌 Key Statistics")
+st.markdown("### Key Statistics")
 
 col1, col2, col3, col4 = st.columns(4)
 
@@ -588,29 +516,16 @@ with col4:
     median_pval = df['p_value'].median()
     st.metric("Median P-Value", f"{median_pval:.4f}")
 
-# ============================================================================
-# FOOTER
-# ============================================================================
-
 st.markdown("---")
 st.markdown("""
-### 💡 The Insight
+### Key Insight
 
-This dashboard proves that statistical filtering works because:
+Statistical filtering works because:
 
-1. **P-values reveal truth**: When p > 0.05, the "trend" is likely random walk
-2. **Confidence scales risk**: High p-value → small position, Low p-value → big position
-3. **Better outcomes**: Same signals, statistical scaling improves Sharpe 30-50%
+1. P-values reveal truth: When p > 0.05, the trend is likely random walk
+2. Confidence scales risk: High p-value means small position, low p-value means big position
+3. Better outcomes: Same signals, statistical scaling improves Sharpe 30-50%
 
-The cyan markers (significant trends) only appear during real directional moves, 
-ignoring the noise in sideways markets. That's what prevents "catching falling knives."
-
-### 🎯 For Interviews
-
-Show this dashboard when they ask: "How do you avoid trading noise?"
-
-Answer: "I test if every pattern is statistically real using p-values. Then I scale 
-position size by p-value confidence. This prevents over-trading marginal signals."
-
-The visualizations prove it works.
+Cyan markers show significant trends. Notice they only appear during real directional moves,
+ignoring the noise in sideways markets.
 """)
