@@ -1,131 +1,137 @@
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import logging
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any
 
-from dotenv import load_dotenv
-load_dotenv()
+# Ensure project root is in path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.alpaca_trader import AlpacaTrader
 from src.vector_calculator import VectorCalculator
 from src.fractal_detector import FractalDetector
-from src.pattern_detector import PatternDetector
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import time
+from src.regime_detector import RegimeDetector
+from src.market_friction_model import MarketFrictionModel
+from src.bayesian_kelly import BayesianKellyCriterion
 
+# Institutional logging configuration
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("FractalOrchestrator")
 
-OPTIMIZED_PARAMS = {
-    'PLTR': {'lookback': 10, 'threshold': 0.20},
-    'QQQ': {'lookback': 20, 'threshold': 0.15},
-    'PENN': {'lookback': 35, 'threshold': 0.15},
-    'SPY': {'lookback': 10, 'threshold': 0.05},
-}
-
-
-def get_alpaca_data(trader, ticker: str, days: int = 365) -> pd.DataFrame:
-    try:
-        end = datetime.now()
-        start = end - timedelta(days=days)
-        
-        bars = trader.api.get_bars(ticker, '1Day',
-            start=start.strftime('%Y-%m-%dT00:00:00Z'),
-            end=end.strftime('%Y-%m-%dT00:00:00Z'),
-            limit=365)
-        
-        if bars is None or len(bars) == 0:
-            return pd.DataFrame()
-        
-        data = []
-        for bar in bars:
-            data.append({
-                'date': pd.to_datetime(bar.t),
-                'open': float(bar.o), 'high': float(bar.h),
-                'low': float(bar.l), 'close': float(bar.c),
-                'volume': int(bar.v)
-            })
-        
-        df = pd.DataFrame(data)
-        return df.sort_values('date').reset_index(drop=True)
-    except:
-        return pd.DataFrame()
-
-
-def get_cluster_targets(close, resistance_clusters):
-    targets = np.zeros(len(close))
-    for i in range(len(close)):
-        current_price = close[i]
-        higher = [r for r in resistance_clusters if r[0] > current_price]
-        if higher:
-            targets[i] = min(higher, key=lambda x: x[0] - current_price)[0]
-        else:
-            targets[i] = current_price * 1.03
-    return targets
-
-
-def analyze_ticker(trader, ticker: str):
-    df = get_alpaca_data(trader, ticker, days=365)
+class QuantumFractalSystem:
+    """
+    Main execution coordinator for the Fractal Alpha strategy.
     
-    if df.empty:
-        return None
+    Integrates signal generation, market regime filtering, and 
+    Bayesian position sizing into a unified production loop.
+    """
     
-    params = OPTIMIZED_PARAMS.get(ticker)
-    if not params:
-        return None
-    
-    vector_calc = VectorCalculator(wave_period=7, lookback=params['lookback'])
-    vector = vector_calc.calculate_vector(df)
-    vector_strength = vector_calc.get_vector_strength(df, vector)
-    
-    fractal_detector = FractalDetector(cluster_threshold=params['threshold'])
-    fractal_highs, fractal_lows = fractal_detector.detect_fractals(df)
-    resistance, support = fractal_detector.get_resistance_and_support(fractal_highs, fractal_lows)
-    
-    pattern_detector = PatternDetector()
-    table_top_b = pattern_detector.detect_table_top_b(df, vector, vector_strength)
-    table_top_a = pattern_detector.detect_table_top_a(df, vector, vector_strength)
-    
-    latest_idx = len(df) - 1
-    has_signal = table_top_b[latest_idx] == 1 or table_top_a[latest_idx] == 1
-    
-    current_price = df['close'].iloc[-1]
-    current_vector = vector[latest_idx]
-    targets = get_cluster_targets(df['close'].values, resistance)
-    target_price = targets[latest_idx]
-    
-    return {
-        'ticker': ticker,
-        'signal': 'BUY' if has_signal else 'NONE',
-        'price': current_price,
-        'vector': current_vector,
-        'target': target_price,
-        'stop_loss': current_vector * 0.985,
-        'strength': vector_strength[latest_idx]
+    # Calibrated parameters per asset class
+    STRATEGY_MAP = {
+        'PLTR': {'lookback': 10, 'threshold': 0.20},
+        'QQQ':  {'lookback': 20, 'threshold': 0.15},
+        'PENN': {'lookback': 35, 'threshold': 0.15},
+        'SPY':  {'lookback': 10, 'threshold': 0.05},
     }
 
-
-def main():
-    print("="*70)
-    print("QUANTUM FRACTALS - REAL-TIME TRADING BOT")
-    print("="*70)
-    
-    trader = AlpacaTrader()
-    
-    if not trader.connect():
-        return
-    
-    account = trader.get_account_info()
-    print(f"\nAccount: ${account['cash']:,.2f} cash")
-    
-    print("\nMonitoring for signals...\n")
-    
-    for ticker in ['PLTR', 'QQQ', 'PENN', 'SPY']:
-        signal = analyze_ticker(trader, ticker)
+    def __init__(self) -> None:
+        self.trader = AlpacaTrader()
+        self.regime_guard = RegimeDetector()
+        self.friction_engine = MarketFrictionModel()
+        self.allocator = None # Initialized after connection
         
-        if signal and signal['signal'] == 'BUY':
-            print(f"SIGNAL: {ticker} BUY @ ${signal['price']:.2f}")
-            print(f"  Target: ${signal['target']:.2f} | Stop: ${signal['stop_loss']:.2f}")
+        if not self.trader.connect():
+            raise ConnectionError("Alpaca API authentication failed.")
+            
+        account = self.trader.get_account_info()
+        self.allocator = BayesianKellyCriterion(account_equity=float(account['portfolio_value']))
 
+    def fetch_market_data(self, ticker: str, horizon: int = 365) -> pd.DataFrame:
+        """Fetches and cleans historical OHLCV data."""
+        try:
+            end = datetime.now()
+            start = end - timedelta(days=horizon)
+            
+            bars = self.trader.api.get_bars(
+                ticker, '1Day',
+                start=start.strftime('%Y-%m-%dT00:00:00Z'),
+                end=end.strftime('%Y-%m-%dT00:00:00Z')
+            ).df
+            
+            if bars.empty:
+                return pd.DataFrame()
+            
+            # Standardization of dataframe schema
+            df = bars[['open', 'high', 'low', 'close', 'volume']].copy()
+            df.index = pd.to_datetime(df.index)
+            return df.sort_index()
+        except Exception as e:
+            logger.error(f"DataFetchError | Ticker: {ticker} | Reason: {e}")
+            return pd.DataFrame()
+
+    def run_cycle(self) -> None:
+        """Executes one full iteration across the watch-list."""
+        logger.info("Starting production cycle...")
+        
+        for ticker, params in self.STRATEGY_MAP.items():
+            df = self.fetch_market_data(ticker)
+            if df.empty or len(df) < params['lookback']:
+                continue
+
+            # 1. Primary Vector & Signal Generation
+            vector_calc = VectorCalculator(wave_period=7, lookback=params['lookback'])
+            vector = vector_calc.calculate_vector(df)
+            strength = vector_calc.get_vector_strength(df, vector)
+            
+            # 2. Market Regime & Noise Filtering
+            state_metrics = self.regime_guard.detect_regime(df['close'].values)
+            
+            # 3. Liquidity & Implementation Shortfall Modeling
+            avg_volume = df['volume'].tail(10).mean()
+            
+            # Validation via Regime Guard (Volatility-adjusted Dead Band)
+            signal = self.regime_guard.validate_execution_signal(
+                price=df['close'].iloc[-1],
+                vector=vector[-1],
+                atr=df['close'].rolling(14).std().iloc[-1], # Simplified ATR proxy
+                strength=strength[-1],
+                state=state_metrics['state']
+            )
+
+            if signal['is_confirmed']:
+                self._execute_trade_pipeline(ticker, df, strength[-1], avg_volume)
+
+    def _execute_trade_pipeline(self, ticker: str, df: pd.DataFrame, strength: float, avg_vol: float) -> None:
+        """Handles the final allocation and order placement logic."""
+        current_price = df['close'].iloc[-1]
+        
+        # Risk-based stop calculation
+        stop_price = current_price * 0.985
+        risk_per_share = current_price - stop_price
+        
+        # Bayesian Kelly Sizing
+        qty = self.allocator.calculate_position_size(
+            vector_strength=strength,
+            risk_per_share=risk_per_share,
+            buying_power=float(self.trader.get_account_info()['buying_power'])
+        )
+        
+        # Liquidity constraint check
+        max_qty = self.friction_engine.get_liquidity_constrained_size(avg_vol)
+        final_qty = min(qty, max_qty)
+
+        if final_qty > 0:
+            logger.info(f"EXECUTION_SIGNAL | {ticker} | Qty: {final_qty} | Price: {current_price:.2f}")
+            # trader.place_order(...) would be called here
 
 if __name__ == "__main__":
-    main()
+    system = QuantumFractalSystem()
+    while True:
+        try:
+            system.run_cycle()
+            # Standard institutional heartbeat interval
+            time.sleep(3600) 
+        except KeyboardInterrupt:
+            break

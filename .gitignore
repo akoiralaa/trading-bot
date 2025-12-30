@@ -1,7 +1,15 @@
-# Environment variables
+# Environment and secrets
 .env
 .env.local
 .env.*.local
+secrets.toml
+credentials.json
+
+# API keys and tokens (CRITICAL - never commit these)
+*_key
+*_secret
+*_token
+api_keys.txt
 
 # Python
 __pycache__/
@@ -9,9 +17,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -28,28 +33,41 @@ wheels/
 .installed.cfg
 *.egg
 
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Data and logs
-trade_log.json
-*.log
-
-# HTML charts (regenerated)
-*.html
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project specific
-archive/
-results/
-.streamlit/secrets/tomllogs/
 data/
-*.pyc
-__pycache__/
+logs/
+*.log
+trade_log.json
+backtest_results/
+
+# Archives
+archive/
+old/
+abandoned/
+
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db

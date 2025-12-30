@@ -1,188 +1,147 @@
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import logging
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any
 
-from dotenv import load_dotenv
-load_dotenv()
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# Ensure local imports are resolved
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.alpaca_trader import AlpacaTrader
 from src.vector_calculator import VectorCalculator
 from src.fractal_detector import FractalDetector
 from src.pattern_detector import PatternDetector
-from src.backtester import Backtester
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+from src.backtester import AdvancedBacktester # Utilizing the refactored engine
 
+logger = logging.getLogger("StrategyVisualizer")
 
-OPTIMIZED_PARAMS = {
-    'PLTR': {'lookback': 10, 'threshold': 0.20},
-    'PENN': {'lookback': 35, 'threshold': 0.15},
-    'QQQ': {'lookback': 20, 'threshold': 0.15},
-    'SPY': {'lookback': 10, 'threshold': 0.05},
-}
+class StrategyPerformanceVisualizer:
+    """
+    Orchestrates high-fidelity backtesting and generates interactive 
+    visual performance attribution charts.
+    """
 
-
-def get_alpaca_data(trader, ticker: str, days: int = 365) -> pd.DataFrame:
-    try:
-        end = datetime.now()
-        start = end - timedelta(days=days)
-        
-        bars = trader.api.get_bars(
-            ticker,
-            '1Day',
-            start=start.strftime('%Y-%m-%dT00:00:00Z'),
-            end=end.strftime('%Y-%m-%dT00:00:00Z'),
-            limit=365
-        )
-        
-        if bars is None or len(bars) == 0:
-            return pd.DataFrame()
-        
-        data = []
-        for bar in bars:
-            data.append({
-                'date': pd.to_datetime(bar.t),
-                'open': float(bar.o),
-                'high': float(bar.h),
-                'low': float(bar.l),
-                'close': float(bar.c),
-                'volume': int(bar.v)
-            })
-        
-        df = pd.DataFrame(data)
-        return df.sort_values('date').reset_index(drop=True)
-        
-    except Exception as e:
-        print(f"Error: {e}")
-        return pd.DataFrame()
-
-
-def get_cluster_targets(close, resistance_clusters):
-    targets = np.zeros(len(close))
-    for i in range(len(close)):
-        current_price = close[i]
-        higher = [r for r in resistance_clusters if r[0] > current_price]
-        if higher:
-            targets[i] = min(higher, key=lambda x: x[0] - current_price)[0]
-        else:
-            targets[i] = current_price * 1.03
-    return targets
-
-
-def backtest_ticker(trader, ticker: str) -> dict:
-    df = get_alpaca_data(trader, ticker, days=365)
-    
-    if df.empty:
-        return None
-    
-    params = OPTIMIZED_PARAMS.get(ticker)
-    if not params:
-        return None
-    
-    vector_calc = VectorCalculator(wave_period=7, lookback=params['lookback'])
-    vector = vector_calc.calculate_vector(df)
-    vector_strength = vector_calc.get_vector_strength(df, vector)
-    
-    fractal_detector = FractalDetector(cluster_threshold=params['threshold'])
-    fractal_highs, fractal_lows = fractal_detector.detect_fractals(df)
-    resistance, support = fractal_detector.get_resistance_and_support(fractal_highs, fractal_lows)
-    
-    pattern_detector = PatternDetector()
-    table_top_b = pattern_detector.detect_table_top_b(df, vector, vector_strength)
-    table_top_a = pattern_detector.detect_table_top_a(df, vector, vector_strength)
-    entry_signals = np.logical_or(table_top_b, table_top_a).astype(int)
-    
-    targets = get_cluster_targets(df['close'].values, resistance)
-    stops = vector * 0.985
-    
-    backtester = Backtester()
-    metrics = backtester.run_backtest(df, vector, entry_signals, stops, targets, vector_strength)
-    
-    # Create chart
-    fig = make_subplots(
-        rows=2, cols=1,
-        subplot_titles=(f"{ticker} - Real Data Optimized", "Signal Strength"),
-        vertical_spacing=0.15,
-        row_heights=[0.7, 0.3]
-    )
-    
-    fig.add_trace(
-        go.Scatter(x=df['date'], y=df['close'], name='Price', line=dict(color='blue', width=2)),
-        row=1, col=1
-    )
-    
-    fig.add_trace(
-        go.Scatter(x=df['date'], y=vector, name='Vector', line=dict(color='red', width=1, dash='dash')),
-        row=1, col=1
-    )
-    
-    signal_dates = df.loc[entry_signals == 1, 'date']
-    signal_prices = df.loc[entry_signals == 1, 'close']
-    
-    fig.add_trace(
-        go.Scatter(x=signal_dates, y=signal_prices, mode='markers', name='Signal',
-                   marker=dict(color='green', size=8, symbol='triangle-up')),
-        row=1, col=1
-    )
-    
-    fig.add_trace(
-        go.Bar(x=df['date'], y=vector_strength, name='Strength',
-               marker=dict(color=vector_strength, colorscale='RdYlGn', cmin=-1, cmax=1)),
-        row=2, col=1
-    )
-    
-    fig.update_layout(title=f"{ticker} - Real Data Optimized", height=800, template='plotly_dark', hovermode='x unified')
-    
-    chart_file = f'{ticker}_optimized_real.html'
-    fig.write_html(chart_file)
-    
-    return {
-        'ticker': ticker,
-        'metrics': metrics,
-        'chart_file': chart_file,
-        'params': params
+    STRATEGY_CONFIG = {
+        'PLTR': {'lookback': 10, 'threshold': 0.20},
+        'PENN': {'lookback': 35, 'threshold': 0.15},
+        'QQQ':  {'lookback': 20, 'threshold': 0.15},
+        'SPY':  {'lookback': 10, 'threshold': 0.05},
     }
 
-
-def main():
-    print("="*70)
-    print("QUANTUM FRACTALS - REAL DATA OPTIMIZED SYSTEM")
-    print("="*70)
-    
-    trader = AlpacaTrader()
-    
-    if not trader.connect():
-        return
-    
-    results = {}
-    
-    for ticker in ['PLTR', 'PENN', 'QQQ', 'SPY']:
-        print(f"\nBacktesting {ticker} (optimized)...")
-        result = backtest_ticker(trader, ticker)
+    def __init__(self, horizon_days: int = 365) -> None:
+        self.trader = AlpacaTrader()
+        self.horizon_days = horizon_days
         
-        if result:
-            results[ticker] = result
-            m = result['metrics']
-            p = result['params']
-            print(f"  Params: lookback={p['lookback']}, threshold={p['threshold']:.2f}")
-            print(f"  Trades: {m['total_trades']} | Win: {m['win_rate']:.1f}%")
-            print(f"  Profit Factor: {m['profit_factor']:.2f}x")
-            print(f"  Sharpe: {m['sharpe_ratio']:.2f}")
-            print(f"  Max DD: {m['max_drawdown']:.2f}%")
-    
-    print(f"\n{'='*70}")
-    print("SUMMARY - REAL DATA OPTIMIZED")
-    print(f"{'='*70}\n")
-    print(f"{'Ticker':<8} {'PF':<8} {'Trades':<8} {'Win%':<8} {'Sharpe':<8} {'MaxDD%':<8}")
-    print("-" * 60)
-    
-    for ticker, result in sorted(results.items(), key=lambda x: x[1]['metrics']['profit_factor'], reverse=True):
-        m = result['metrics']
-        print(f"{ticker:<8} {m['profit_factor']:<8.2f}x {m['total_trades']:<8} {m['win_rate']:<8.1f}% {m['sharpe_ratio']:<8.2f} {m['max_drawdown']:<8.2f}%")
+        if not self.trader.connect():
+            raise ConnectionError("Authentication failed with Alpaca API.")
 
+    def fetch_standardized_data(self, ticker: str) -> pd.DataFrame:
+        """Retrieves and normalizes OHLCV time-series."""
+        try:
+            end = datetime.now()
+            start = end - timedelta(days=self.horizon_days)
+            
+            bars = self.trader.api.get_bars(
+                ticker, '1Day',
+                start=start.strftime('%Y-%m-%dT00:00:00Z'),
+                end=end.strftime('%Y-%m-%dT00:00:00Z')
+            ).df
+            
+            if bars.empty:
+                return pd.DataFrame()
+                
+            return bars[['open', 'high', 'low', 'close', 'volume']].sort_index()
+        except Exception as e:
+            logger.error(f"DataError | Ticker: {ticker} | Exception: {e}")
+            return pd.DataFrame()
+
+    def run_attribution_pipeline(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """Executes full backtest and generates Plotly visualization."""
+        df = self.fetch_standardized_data(ticker)
+        if df.empty:
+            return None
+
+        params = self.STRATEGY_CONFIG.get(ticker)
+        
+        # 1. Indicator Calculation
+        vc = VectorCalculator(wave_period=7, lookback=params['lookback'])
+        vector = vc.calculate_vector(df)
+        strength = vc.get_vector_strength(df, vector)
+        
+        # 2. Structural Signal Detection
+        fd = FractalDetector(cluster_threshold=params['threshold'])
+        f_highs, f_lows = fd.detect_fractals(df)
+        resistance, _ = fd.get_resistance_and_support(f_highs, f_lows)
+        
+        pd_detector = PatternDetector()
+        entry_signals = (pd_detector.detect_table_top_b(df, vector, strength) | 
+                         pd_detector.detect_table_top_a(df, vector, strength)).astype(int)
+        
+        # 3. Execution Logic (Stops/Targets)
+        stops = vector * 0.985
+        targets = self._derive_cluster_targets(df['close'].values, resistance)
+        
+        # 4. Metric Computation
+        # Note: AdvancedBacktester handles the friction-adjusted results
+        bt = AdvancedBacktester(engine=None) # Integration placeholder
+        results = bt.run_backtest(df['close'].values, vector, strength, df['volume'].values)
+        
+        chart_path = self._generate_plotly_artifacts(ticker, df, vector, entry_signals, strength)
+        
+        return {
+            'ticker': ticker,
+            'metrics': results,
+            'chart_path': chart_path
+        }
+
+    def _derive_cluster_targets(self, prices: np.ndarray, resistance: List[Any]) -> np.ndarray:
+        """Projects implementation targets based on structural resistance clusters."""
+        targets = np.zeros(len(prices))
+        for i, price in enumerate(prices):
+            upside = [r[0] for r in resistance if r[0] > price]
+            targets[i] = min(upside) if upside else price * 1.03
+        return targets
+
+    def _generate_plotly_artifacts(self, ticker: str, df: pd.DataFrame, 
+                                 vector: np.ndarray, signals: np.ndarray, strength: np.ndarray) -> str:
+        """Constructs an interactive performance dashboard."""
+        fig = make_subplots(
+            rows=2, cols=1, 
+            shared_xaxes=True,
+            subplot_titles=(f"{ticker} Structural Vectors", "Stochastic Signal Strength"),
+            vertical_spacing=0.08, 
+            row_heights=[0.7, 0.3]
+        )
+
+        # Main Price/Vector Plot
+        fig.add_trace(go.Scatter(x=df.index, y=df['close'], name='Price', line=dict(color='#1f77b4')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=vector, name='Vector', line=dict(color='#d62728', dash='dash')), row=1, col=1)
+
+        # Signal Markers
+        sig_idx = df.index[signals == 1]
+        fig.add_trace(go.Scatter(x=sig_idx, y=df.loc[sig_idx, 'close'], mode='markers', 
+                                 marker=dict(symbol='triangle-up', size=10, color='#2ca02c'), name='Entry'), row=1, col=1)
+
+        # Strength Oscillator
+        fig.add_trace(go.Bar(x=df.index, y=strength, marker=dict(color=strength, colorscale='RdYlGn'), name='SignalStrength'), row=2, col=1)
+
+        fig.update_layout(template='plotly_dark', height=900, showlegend=False)
+        output_file = f"artifacts/{ticker}_report.html"
+        fig.write_html(output_file)
+        return output_file
 
 if __name__ == "__main__":
-    main()
+    visualizer = StrategyPerformanceVisualizer()
+    print(f"{'Asset':<8} {'ProfitFactor':<15} {'WinRate':<10} {'Sharpe':<10}")
+    print("-" * 50)
+    
+    for symbol in visualizer.STRATEGY_CONFIG.keys():
+        stats = visualizer.run_attribution_pipeline(symbol)
+        if stats:
+            m = stats['metrics']
+            print(f"{symbol:<8} {m['expectancy']:<15.2f} {m['win_rate']:<10.1%} {m['sharpe_ratio']:<10.2f}")
