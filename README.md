@@ -306,7 +306,7 @@ self.trader = AlpacaTrader()  # Paper trading (safe)
 self.trader = AlpacaTrader(paper=False)  # REAL MONEY (use with caution)
 ```
 
-⚠️ **WARNING:** Only use live trading after:
+**WARNING:** Only use live trading after:
 1. 30+ days of paper trading validation
 2. Testing across different market regimes
 3. Full understanding of all risk parameters
@@ -400,8 +400,6 @@ Warning: Position size reduced from 500 to 250 (liquidity constraint)
 - Signal processing (regime detection, pattern recognition)
 - Portfolio optimization (EV-based sizing)
 
-## Repository
 
-https://github.com/akoiralaa/trading-bot
 
 Production-ready system designed for quantitative trading deployment.
